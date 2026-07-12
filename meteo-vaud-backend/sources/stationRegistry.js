@@ -90,7 +90,15 @@ async function getAllStations(forceRefresh) {
     );
   }
 
-  const text = await res.text();
+  // Le fichier MeteoSwiss contient des caracteres accentues (Grachen,
+  // Chateau-d'Oex...) qui ne sont pas toujours servis en UTF-8 propre.
+  // On decode d'abord en UTF-8 ; si des caracteres de remplacement (U+FFFD)
+  // apparaissent, on re-decode le buffer brut en latin1 a la place.
+  const buffer = await res.buffer();
+  let text = buffer.toString("utf8");
+  if (text.indexOf("\uFFFD") !== -1) {
+    text = buffer.toString("latin1");
+  }
   const rows = parseCsv(text);
   const stations = rows.map(toStationObject).filter(Boolean);
 
