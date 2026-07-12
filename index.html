@@ -691,7 +691,13 @@
 
   function timeAgo(iso) {
     if (!iso) return "—";
-    var diffMin = Math.round((Date.now() - new Date(iso + "Z").getTime()) / 60000);
+    // Certains timestamps arrivent deja au format ISO complet avec "Z"
+    // (ex: updatedAt du backend), d'autres sans (ex: timestamp de
+    // mesure par station) : on n'ajoute "Z" que si necessaire, sinon
+    // "...957Z" devient "...957ZZ" et Date() renvoie NaN.
+    var normalized = /Z|[+-]\d{2}:\d{2}$/.test(iso) ? iso : iso + "Z";
+    var diffMin = Math.round((Date.now() - new Date(normalized).getTime()) / 60000);
+    if (Number.isNaN(diffMin)) return "—";
     if (diffMin < 1) return "a l'instant";
     if (diffMin === 1) return "il y a 1 min";
     if (diffMin < 60) return "il y a " + diffMin + " min";
@@ -980,33 +986,17 @@
   var tempLayer = null;
   var tempVisible = false;
 
-  // Palette personnalisee alignee sur l'identite visuelle de l'app
-  // (violet froid -> teal -> ambre -> orange brule pour la canicule),
-  // plutot que le degrade pastel par defaut d'OpenWeatherMap qui se
-  // delave sur fond sombre. Valeurs en degres Celsius.
-  var TEMP_PALETTE =
-    "-20:2b1b52;" +
-    "-10:3e5b99;" +
-    "0:4fa3b5;" +
-    "10:74c69d;" +
-    "20:d4b483;" +
-    "25:c98a1d;" +
-    "32:e0672b;" +
-    "40:8c2f1b";
-
+  // Note : l'endpoint "2.0/weather/TA2" avec palette personnalisee
+  // renvoie une 401 sur l'offre gratuite (malgre une documentation
+  // ambigue a ce sujet) - on reste donc sur temp_new, confirme
+  // fonctionnel, avec la palette par defaut d'OpenWeatherMap.
   function buildTempTileUrl() {
-    // API "2.0" (pas 3h, incluse dans l'offre gratuite) - la version
-    // "1h" equivalente necessite un abonnement payant.
-    return "https://maps.openweathermap.org/maps/2.0/weather/TA2/{z}/{x}/{y}" +
-      "?appid=" + OWM_API_KEY +
-      "&fill_bound=true" +
-      "&opacity=0.6" +
-      "&palette=" + TEMP_PALETTE;
+    return "https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=" + OWM_API_KEY;
   }
 
   function showTempLayer() {
     if (!tempLayer) {
-      tempLayer = L.tileLayer(buildTempTileUrl(), { zIndex: 400 });
+      tempLayer = L.tileLayer(buildTempTileUrl(), { opacity: 0.55, zIndex: 400 });
     }
     map.addLayer(tempLayer);
   }
