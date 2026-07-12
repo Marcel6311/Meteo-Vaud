@@ -16,15 +16,10 @@
 const fetch = require("node-fetch");
 const { translateRow } = require("../parseParameters");
 const { normalizeReading } = require("../normalize");
-const STATIONS = require("../config/stations");
+const DEFAULT_STATIONS = require("../config/stations"); // curated Vaud (v1)
 
 const CURRENT_VALUES_URL =
   "https://data.geo.admin.ch/ch.meteoschweiz.messwerte-aktuell/VQHA80.csv";
-
-// Index rapide code -> metadonnees station suivie
-const STATIONS_BY_CODE = Object.fromEntries(
-  STATIONS.map((s) => [s.code, s])
-);
 
 /**
  * Convertit un timestamp MeteoSwiss "YYYYMMDDHHmm" (heure locale Suisse)
@@ -65,10 +60,16 @@ function parseCsv(text) {
 }
 
 /**
- * Recupere et normalise les dernieres valeurs pour les stations suivies.
+ * Recupere et normalise les dernieres valeurs pour une liste de stations.
+ * @param {Array<Object>} [stationsList] - par defaut, la liste vaudoise
+ *   curatee (config/stations.js). Passer la liste complete issue de
+ *   stationRegistry.getAllStations() pour couvrir toute la Suisse.
  * @returns {Promise<Array<Object>>} lectures normalisees (voir normalize.js)
  */
-async function fetchCurrentReadings() {
+async function fetchCurrentReadings(stationsList) {
+  const stations = stationsList || DEFAULT_STATIONS;
+  const stationsByCode = Object.fromEntries(stations.map((s) => [s.code, s]));
+
   const res = await fetch(CURRENT_VALUES_URL);
   if (!res.ok) {
     throw new Error(
@@ -82,7 +83,7 @@ async function fetchCurrentReadings() {
 
   for (const row of rows) {
     const stationCode = row["Station/Location"];
-    const station = STATIONS_BY_CODE[stationCode];
+    const station = stationsByCode[stationCode];
     if (!station) continue; // station non suivie, on ignore
 
     const mesures = translateRow(row);
