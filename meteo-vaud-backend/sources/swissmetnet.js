@@ -5,10 +5,11 @@
 //
 // Fichier source : VQHA80.csv
 // https://data.geo.admin.ch/ch.meteoschweiz.messwerte-aktuell/VQHA80.csv
-// Format : lignes separees par "|", encodage ISO-8859-1, une ligne d'entete
-// suivie d'une ligne par station. Exemple :
-//   stn|time|tre200s0|sre000z0|rre150z0|dkl010z0|fu3010z0|pp0qnhs0|fu3010z1|ure200s0|prestas0|pp0qffs0
-//   PUY|202607121420|18.2|0|0.0|210|12.0|1013.1|18.4|64|951.2|1013.5
+// Format reel (verifie) : lignes separees par ";", entete avec les deux
+// premieres colonnes nommees "Station/Location" et "Date". Exemple :
+//   Station/Location;Date;tre200s0;rre150z0;sre000z0;gre000z0;ure200s0;tde200s0;dkl010z0;fu3010z0;fu3010z1;prestas0;pp0qffs0;pp0qnhs0;...
+//   PUY;202607121420;18.2;0.0;0;326;64;11.3;210;12.0;18.4;951.2;1013.5;1013.1;-;-;-;-;-;-;-;-
+// Les valeurs manquantes sont notees "-".
 //
 // Licence : CC-BY. Toute utilisation affichee doit mentionner "Source: MeteoSwiss".
 
@@ -41,17 +42,18 @@ function parseTimestamp(raw) {
 }
 
 /**
- * Parse le CSV brut (pipe-separated) en tableau d'objets bruts { stn, time, ...codes }
+ * Parse le CSV brut (separateur ";") en tableau d'objets bruts
+ * { "Station/Location": "PUY", "Date": "202607121420", tre200s0: "18.2", ... }
  */
 function parseCsv(text) {
   const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length < 2) return [];
 
-  const header = lines[0].split("|");
+  const header = lines[0].split(";").map((h) => h.trim());
   const rows = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split("|");
+    const cols = lines[i].split(";");
     if (cols.length !== header.length) continue; // ligne malformee, ignoree
     const row = {};
     header.forEach((key, idx) => {
@@ -79,11 +81,12 @@ async function fetchCurrentReadings() {
   const readings = [];
 
   for (const row of rows) {
-    const station = STATIONS_BY_CODE[row.stn];
+    const stationCode = row["Station/Location"];
+    const station = STATIONS_BY_CODE[stationCode];
     if (!station) continue; // station non suivie, on ignore
 
     const mesures = translateRow(row);
-    const timestamp = parseTimestamp(row.time);
+    const timestamp = parseTimestamp(row["Date"]);
 
     readings.push(
       normalizeReading({
