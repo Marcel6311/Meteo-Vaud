@@ -752,6 +752,7 @@
       <button class="rain-toggle" id="rainToggle">☂ PLUIE</button>
       <button class="rain-toggle" id="tempToggle">🌡 TEMPERATURE</button>
       <button class="rain-toggle" id="capitalsToggle">🌍 CAPITALES</button>
+      <button class="rain-toggle" id="compareToggle">⚖️ COMPARAISON</button>
       <div class="status" id="status">
         <span class="dot"></span>
         <span id="statusText">connexion...</span>
@@ -859,6 +860,37 @@
   </div>
 </div>
 
+<div class="capitals-overlay" id="compareOverlay">
+  <div class="capitals-panel">
+    <div class="capitals-header">
+      <div>
+        <h2>SwissMetNet vs Azure Maps</h2>
+        <div class="capitals-sub" id="compareSub">—</div>
+      </div>
+      <button class="detail-close" id="compareClose">✕</button>
+    </div>
+    <div class="hrecord" style="padding: 10px 22px; color: var(--text-faint); font-size: 11px; border-bottom: 1px solid var(--hairline);">
+      Comparaison entre la mesure officielle SwissMetNet et le produit meteo Azure Maps (Microsoft) — pas une comparaison avec le modele Aurora.
+    </div>
+    <div class="capitals-table-wrap">
+      <table class="capitals-table">
+        <thead>
+          <tr>
+            <th>Station</th>
+            <th>SwissMetNet</th>
+            <th>Azure Maps</th>
+            <th>Ecart</th>
+            <th>Ciel (Azure)</th>
+          </tr>
+        </thead>
+        <tbody id="compareBody">
+          <tr><td colspan="5" class="loading-msg">Chargement...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 (function () {
@@ -897,7 +929,12 @@
     regionTabs: document.getElementById("regionTabs"),
     historicalRecords: document.getElementById("historicalRecords"),
     hotValue: document.getElementById("hotValue"),
-    coldValue: document.getElementById("coldValue")
+    coldValue: document.getElementById("coldValue"),
+    compareToggle: document.getElementById("compareToggle"),
+    compareOverlay: document.getElementById("compareOverlay"),
+    compareClose: document.getElementById("compareClose"),
+    compareSub: document.getElementById("compareSub"),
+    compareBody: document.getElementById("compareBody")
   };
 
   var currentScope = "vd";
@@ -1501,6 +1538,95 @@
 
   els.capitalsOverlay.addEventListener("click", function (e) {
     if (e.target === els.capitalsOverlay) els.capitalsOverlay.classList.remove("open");
+  });
+
+  // -------------------------------------------------------------------
+  // Comparaison SwissMetNet vs Azure Maps
+  // -------------------------------------------------------------------
+
+  var compareLoaded = false;
+
+  function ecartColor(ecart) {
+    if (ecart === null || ecart === undefined) return "#5C6570";
+    // Amber si Azure Maps plus chaud, teal si plus froid - jamais de rouge.
+    return ecart >= 0 ? "var(--amber)" : "var(--cool)";
+  }
+
+  function renderCompareTable(data) {
+    els.compareBody.innerHTML = "";
+
+    data.comparison.forEach(function (c) {
+      var tr = document.createElement("tr");
+
+      var tdStation = document.createElement("td");
+      tdStation.className = "capital";
+      tdStation.textContent = c.station_name;
+
+      var tdSwiss = document.createElement("td");
+      tdSwiss.className = "temp";
+      tdSwiss.textContent = c.swissmetnet_temperature !== null && c.swissmetnet_temperature !== undefined
+        ? c.swissmetnet_temperature.toFixed(1) + "°C"
+        : "n/d";
+
+      var tdAzure = document.createElement("td");
+      tdAzure.className = "temp";
+      tdAzure.textContent = c.azuremaps_temperature !== null && c.azuremaps_temperature !== undefined
+        ? c.azuremaps_temperature.toFixed(1) + "°C"
+        : "n/d";
+
+      var tdEcart = document.createElement("td");
+      tdEcart.className = "temp";
+      if (c.ecart !== null && c.ecart !== undefined) {
+        tdEcart.textContent = (c.ecart >= 0 ? "+" : "") + c.ecart.toFixed(1) + "°C";
+        tdEcart.style.color = ecartColor(c.ecart);
+      } else {
+        tdEcart.textContent = "—";
+        tdEcart.style.color = "#5C6570";
+      }
+
+      var tdDesc = document.createElement("td");
+      tdDesc.className = "desc";
+      tdDesc.textContent = c.azuremaps_description || "—";
+
+      tr.appendChild(tdStation);
+      tr.appendChild(tdSwiss);
+      tr.appendChild(tdAzure);
+      tr.appendChild(tdEcart);
+      tr.appendChild(tdDesc);
+      els.compareBody.appendChild(tr);
+    });
+
+    els.compareSub.textContent = data.comparison.length + " stations vaudoises · maj " + timeAgo(data.updatedAt);
+  }
+
+  function loadCompare() {
+    els.compareBody.innerHTML = '<tr><td colspan="5" class="loading-msg">Chargement (peut prendre quelques secondes)...</td></tr>';
+    fetch(API_BASE + "/stations/compare")
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        compareLoaded = true;
+        renderCompareTable(data);
+      })
+      .catch(function (err) {
+        els.compareBody.innerHTML =
+          '<tr><td colspan="5" class="error-msg">Impossible de charger la comparaison.<br>' + err.message + "</td></tr>";
+      });
+  }
+
+  els.compareToggle.addEventListener("click", function () {
+    els.compareOverlay.classList.add("open");
+    if (!compareLoaded) loadCompare();
+  });
+
+  els.compareClose.addEventListener("click", function () {
+    els.compareOverlay.classList.remove("open");
+  });
+
+  els.compareOverlay.addEventListener("click", function (e) {
+    if (e.target === els.compareOverlay) els.compareOverlay.classList.remove("open");
   });
 
   // -------------------------------------------------------------------
