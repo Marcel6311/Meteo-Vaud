@@ -560,6 +560,31 @@
     border-color: var(--amber);
   }
 
+  .historical-records {
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 22px;
+    background: var(--panel-alt);
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .historical-records.visible {
+    display: flex;
+  }
+
+  .hrecord {
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .hrecord strong {
+    font-family: var(--font-mono);
+  }
+
+  .hrecord.hot strong { color: var(--amber); }
+  .hrecord.cold strong { color: var(--cool); }
+
   .extremes-row {
     display: flex;
     gap: 10px;
@@ -809,6 +834,11 @@
       <button data-region="africa">Afrique</button>
       <button data-region="asia">Asie</button>
       <button data-region="oceania">Oceanie</button>
+      <button data-region="extremes">🌋 Extremes</button>
+    </div>
+    <div class="historical-records" id="historicalRecords">
+      <div class="hrecord hot">Record absolu de chaleur : <strong>56,7°C</strong> — Death Valley, Etats-Unis (10 juillet 1913)</div>
+      <div class="hrecord cold">Record absolu de froid : <strong>-89,2°C</strong> — Station Vostok, Antarctique (21 juillet 1983)</div>
     </div>
     <div class="capitals-table-wrap">
       <table class="capitals-table">
@@ -865,6 +895,7 @@
     capitalsSub: document.getElementById("capitalsSub"),
     capitalsBody: document.getElementById("capitalsBody"),
     regionTabs: document.getElementById("regionTabs"),
+    historicalRecords: document.getElementById("historicalRecords"),
     hotValue: document.getElementById("hotValue"),
     coldValue: document.getElementById("coldValue")
   };
@@ -1298,7 +1329,7 @@
     return "rgb(" + rgb.join(",") + ")";
   }
 
-  var ALL_REGIONS = ["europe", "north_america", "south_america", "africa", "asia", "oceania"];
+  var ALL_REGIONS = ["europe", "north_america", "south_america", "africa", "asia", "oceania", "extremes"];
   var globalExtremesLoading = false;
 
   function updateGlobalExtremes() {
@@ -1433,6 +1464,7 @@
     els.regionTabs.querySelectorAll("button").forEach(function (btn) {
       btn.classList.toggle("active", btn.dataset.region === region);
     });
+    els.historicalRecords.classList.toggle("visible", region === "extremes");
     if (capitalsCacheByRegion[region]) {
       renderCapitalsTable();
     } else {
