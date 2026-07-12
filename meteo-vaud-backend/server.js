@@ -20,6 +20,7 @@ const cors = require("cors");
 const VD_STATIONS = require("./config/stations");
 const EUROPE_CAPITALS = require("./config/capitals");
 const WORLD_CAPITALS = require("./config/capitals-world");
+const EXTREME_PLACES = require("./config/extreme-places");
 const { fetchCurrentReadings } = require("./sources/swissmetnet");
 const { getAllStations } = require("./sources/stationRegistry");
 const { fetchCapitalsList } = require("./sources/capitals");
@@ -39,7 +40,8 @@ const CAPITAL_REGIONS = {
   south_america: WORLD_CAPITALS.SOUTH_AMERICA,
   africa: WORLD_CAPITALS.AFRICA,
   asia: WORLD_CAPITALS.ASIA,
-  oceania: WORLD_CAPITALS.OCEANIA
+  oceania: WORLD_CAPITALS.OCEANIA,
+  extremes: EXTREME_PLACES
 };
 
 // Un cache separe par scope station, meme forme pour les deux :
