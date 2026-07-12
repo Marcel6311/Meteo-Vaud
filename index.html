@@ -152,6 +152,52 @@
     border-color: var(--cool);
   }
 
+  .rain-controls {
+    position: absolute;
+    left: 16px;
+    bottom: 16px;
+    z-index: 1000;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    background: rgba(26, 32, 41, 0.92);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    padding: 6px 10px;
+    backdrop-filter: blur(4px);
+  }
+
+  .rain-controls.visible {
+    display: flex;
+  }
+
+  .rain-controls button {
+    background: var(--panel-alt);
+    border: 1px solid var(--hairline);
+    color: var(--text);
+    width: 26px;
+    height: 26px;
+    border-radius: 5px;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .rain-controls button:hover {
+    border-color: var(--cool);
+  }
+
+  .rain-controls #rainTimestamp {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 0 6px;
+    min-width: 52px;
+    text-align: center;
+  }
+
   .header-right {
     display: flex;
     align-items: center;
@@ -506,7 +552,14 @@
   </header>
 
   <main>
-    <div id="map"></div>
+    <div id="map">
+      <div class="rain-controls" id="rainControls">
+        <button id="rainPrev">⏮</button>
+        <button id="rainPlay">▶</button>
+        <button id="rainNext">⏭</button>
+        <span id="rainTimestamp">—</span>
+      </div>
+    </div>
 
     <aside class="profile">
       <div class="profile-label">Profil d'altitude</div>
@@ -565,7 +618,12 @@
     dClose: document.getElementById("dClose"),
     scopeToggle: document.getElementById("scopeToggle"),
     rainToggle: document.getElementById("rainToggle"),
-    tempToggle: document.getElementById("tempToggle")
+    tempToggle: document.getElementById("tempToggle"),
+    rainControls: document.getElementById("rainControls"),
+    rainPrev: document.getElementById("rainPrev"),
+    rainPlay: document.getElementById("rainPlay"),
+    rainNext: document.getElementById("rainNext"),
+    rainTimestamp: document.getElementById("rainTimestamp")
   };
 
   var currentScope = "vd";
@@ -778,7 +836,7 @@
   });
 
   // -------------------------------------------------------------------
-  // Calque pluie (RainViewer)
+  // Calque pluie (RainViewer) + animation du deplacement
   // -------------------------------------------------------------------
   // API publique, gratuite, sans cle. Attribution obligatoire : voir footer.
   // https://www.rainviewer.com/api.html
@@ -787,6 +845,10 @@
   var rainLayer = null;
   var rainVisible = false;
   var rainFrames = null; // cache de la reponse API
+  var rainFrameIndex = 0; // index courant dans radar.past
+  var rainPlaying = false;
+  var rainTimer = null;
+  var RAIN_ANIMATION_DELAY_MS = 600;
 
   function buildRainTileUrl(host, frame) {
     var size = 256;
@@ -795,29 +857,83 @@
     return host + frame.path + "/" + size + "/{z}/{x}/{y}/" + colorScheme + "/" + smoothSnow + ".png";
   }
 
-  function showRainLayer() {
+  function formatFrameTime(unixSeconds) {
+    var d = new Date(unixSeconds * 1000);
+    var hh = String(d.getHours()).padStart(2, "0");
+    var mm = String(d.getMinutes()).padStart(2, "0");
+    return hh + ":" + mm;
+  }
+
+  function getPastFrames() {
+    return (rainFrames && rainFrames.radar && rainFrames.radar.past) || [];
+  }
+
+  function showRainFrameAt(index) {
+    var frames = getPastFrames();
+    if (frames.length === 0) return;
+
+    rainFrameIndex = ((index % frames.length) + frames.length) % frames.length;
+    var frame = frames[rainFrameIndex];
+    var url = buildRainTileUrl(rainFrames.host, frame);
+
     if (rainLayer) {
+      rainLayer.setUrl(url);
+    } else {
+      rainLayer = L.tileLayer(url, {
+        opacity: 0.65,
+        zIndex: 500,
+        maxNativeZoom: 7, // RainViewer (offre gratuite) ne fournit pas de tuiles au-dela du niveau 7
+        minZoom: 0
+      });
       map.addLayer(rainLayer);
-      return;
     }
-    if (!rainFrames) return; // pas encore charge, showRainLayer sera rappele apres fetch
 
-    var host = rainFrames.host;
-    var pastFrames = rainFrames.radar && rainFrames.radar.past;
-    if (!pastFrames || pastFrames.length === 0) return;
-    var latestFrame = pastFrames[pastFrames.length - 1];
+    var isLatest = rainFrameIndex === frames.length - 1;
+    els.rainTimestamp.textContent = formatFrameTime(frame.time) + (isLatest ? " (direct)" : "");
+  }
 
-    rainLayer = L.tileLayer(buildRainTileUrl(host, latestFrame), {
-      opacity: 0.65,
-      zIndex: 500,
-      maxNativeZoom: 7, // RainViewer (offre gratuite) ne fournit pas de tuiles au-dela du niveau 7
-      minZoom: 0
-    });
-    map.addLayer(rainLayer);
+  function showRainLayer() {
+    if (!rainFrames) return; // pas encore charge, rappele apres fetch (voir fetchRainFrames)
+    var frames = getPastFrames();
+    if (frames.length === 0) return;
+    showRainFrameAt(frames.length - 1); // demarre sur l'image la plus recente
+    els.rainControls.classList.add("visible");
   }
 
   function hideRainLayer() {
+    stopRainAnimation();
     if (rainLayer) map.removeLayer(rainLayer);
+    els.rainControls.classList.remove("visible");
+  }
+
+  function stepRainFrame(delta) {
+    stopRainAnimation();
+    showRainFrameAt(rainFrameIndex + delta);
+  }
+
+  function playRainAnimation() {
+    rainPlaying = true;
+    els.rainPlay.textContent = "⏸";
+    rainTimer = setInterval(function () {
+      showRainFrameAt(rainFrameIndex + 1);
+    }, RAIN_ANIMATION_DELAY_MS);
+  }
+
+  function stopRainAnimation() {
+    rainPlaying = false;
+    els.rainPlay.textContent = "▶";
+    if (rainTimer) {
+      clearInterval(rainTimer);
+      rainTimer = null;
+    }
+  }
+
+  function toggleRainAnimation() {
+    if (rainPlaying) {
+      stopRainAnimation();
+    } else {
+      playRainAnimation();
+    }
   }
 
   function fetchRainFrames() {
@@ -829,9 +945,7 @@
       .then(function (data) {
         rainFrames = data;
         if (rainVisible) {
-          hideRainLayer();
-          rainLayer = null;
-          showRainLayer();
+          showRainFrameAt(getPastFrames().length - 1); // recale sur le direct apres refresh
         }
       })
       .catch(function () {
@@ -848,6 +962,10 @@
       hideRainLayer();
     }
   });
+
+  els.rainPrev.addEventListener("click", function () { stepRainFrame(-1); });
+  els.rainNext.addEventListener("click", function () { stepRainFrame(1); });
+  els.rainPlay.addEventListener("click", toggleRainAnimation);
 
   fetchRainFrames();
   setInterval(fetchRainFrames, 5 * 60 * 1000); // radar rafraichi toutes les 5 min chez RainViewer
