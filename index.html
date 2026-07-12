@@ -133,6 +133,25 @@
     color: var(--amber);
   }
 
+  .rain-toggle {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    color: var(--text-dim);
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    padding: 7px 11px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .rain-toggle.active {
+    background: rgba(79, 163, 181, 0.15);
+    color: var(--cool);
+    border-color: var(--cool);
+  }
+
   .header-right {
     display: flex;
     align-items: center;
@@ -477,6 +496,7 @@
         <button data-scope="vd" class="active">VAUD</button>
         <button data-scope="ch">SUISSE</button>
       </div>
+      <button class="rain-toggle" id="rainToggle">☂ PLUIE</button>
       <div class="status" id="status">
         <span class="dot"></span>
         <span id="statusText">connexion...</span>
@@ -498,7 +518,7 @@
   </main>
 
   <footer>
-    <span>Source: MeteoSwiss (SwissMetNet, OGD) · CC-BY</span>
+    <span>Source: MeteoSwiss (SwissMetNet, OGD) · CC-BY · Pluie: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a></span>
     <span id="updatedAt">—</span>
   </footer>
 
@@ -542,7 +562,8 @@
     dTemp: document.getElementById("dTemp"),
     dGrid: document.getElementById("dGrid"),
     dClose: document.getElementById("dClose"),
-    scopeToggle: document.getElementById("scopeToggle")
+    scopeToggle: document.getElementById("scopeToggle"),
+    rainToggle: document.getElementById("rainToggle")
   };
 
   var currentScope = "vd";
@@ -753,6 +774,79 @@
   els.dClose.addEventListener("click", function () {
     els.detail.classList.remove("open");
   });
+
+  // -------------------------------------------------------------------
+  // Calque pluie (RainViewer)
+  // -------------------------------------------------------------------
+  // API publique, gratuite, sans cle. Attribution obligatoire : voir footer.
+  // https://www.rainviewer.com/api.html
+
+  var RAINVIEWER_API = "https://api.rainviewer.com/public/weather-maps.json";
+  var rainLayer = null;
+  var rainVisible = false;
+  var rainFrames = null; // cache de la reponse API
+
+  function buildRainTileUrl(host, frame) {
+    var size = 256;
+    var colorScheme = 4; // palette bleue lisible sur fond sombre
+    var smoothSnow = "1_1";
+    return host + frame.path + "/" + size + "/{z}/{x}/{y}/" + colorScheme + "/" + smoothSnow + ".png";
+  }
+
+  function showRainLayer() {
+    if (rainLayer) {
+      map.addLayer(rainLayer);
+      return;
+    }
+    if (!rainFrames) return; // pas encore charge, showRainLayer sera rappele apres fetch
+
+    var host = rainFrames.host;
+    var pastFrames = rainFrames.radar && rainFrames.radar.past;
+    if (!pastFrames || pastFrames.length === 0) return;
+    var latestFrame = pastFrames[pastFrames.length - 1];
+
+    rainLayer = L.tileLayer(buildRainTileUrl(host, latestFrame), {
+      opacity: 0.65,
+      zIndex: 500
+    });
+    map.addLayer(rainLayer);
+  }
+
+  function hideRainLayer() {
+    if (rainLayer) map.removeLayer(rainLayer);
+  }
+
+  function fetchRainFrames() {
+    return fetch(RAINVIEWER_API)
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        rainFrames = data;
+        if (rainVisible) {
+          hideRainLayer();
+          rainLayer = null;
+          showRainLayer();
+        }
+      })
+      .catch(function () {
+        // Echec silencieux : la couche pluie est un bonus, pas la donnee principale
+      });
+  }
+
+  els.rainToggle.addEventListener("click", function () {
+    rainVisible = !rainVisible;
+    els.rainToggle.classList.toggle("active", rainVisible);
+    if (rainVisible) {
+      showRainLayer();
+    } else {
+      hideRainLayer();
+    }
+  });
+
+  fetchRainFrames();
+  setInterval(fetchRainFrames, 5 * 60 * 1000); // radar rafraichi toutes les 5 min chez RainViewer
 
   // -------------------------------------------------------------------
   // Fetch + status
