@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Meteo Vaud</title>
+<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiTWV0ZW8gVmF1ZCIsInNob3J0X25hbWUiOiJNZXRlbyBWYXVkIiwic3RhcnRfdXJsIjoiLiIsImRpc3BsYXkiOiJzdGFuZGFsb25lIiwiYmFja2dyb3VuZF9jb2xvciI6IiMxMDE0MUEiLCJ0aGVtZV9jb2xvciI6IiMxMDE0MUEifQ==">
+<meta name="theme-color" content="#10141A">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    --bg: #10141A;
+    --panel: #1A2029;
+    --panel-alt: #212933;
+    --hairline: #2B333D;
+    --text: #FFFFFF;
+    --text-dim: #8D97A3;
+    --text-faint: #5C6570;
+    --amber: #C98A1D;
+    --cool: #4FA3B5;
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  a { color: inherit; }
+
+  /* ---------- Layout ---------- */
+
+  .app {
+    height: 100vh;
+    height: 100dvh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--hairline);
+    background: var(--bg);
+  }
+
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .brand h1 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 19px;
+    letter-spacing: 0.01em;
+  }
+
+  .version {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--amber);
+    border: 1px solid var(--amber);
+    padding: 1px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.03em;
+  }
+
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .status .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-faint);
+  }
+
+  .status.live .dot {
+    background: var(--cool);
+    box-shadow: 0 0 0 3px rgba(79, 163, 181, 0.15);
+  }
+
+  .status.stale .dot {
+    background: var(--amber);
+    box-shadow: 0 0 0 3px rgba(201, 138, 29, 0.15);
+  }
+
+  main {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    min-height: 0;
+  }
+
+  #map {
+    background: var(--panel);
+    min-height: 0;
+  }
+
+  /* ---------- Profil d'altitude (signature) ---------- */
+
+  .profile {
+    background: var(--panel);
+    border-left: 1px solid var(--hairline);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .profile-label {
+    padding: 12px 16px 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .profile-scroll {
+    flex: 1;
+    overflow-y: auto;
+    position: relative;
+    padding: 16px 0;
+  }
+
+  .profile-track {
+    position: relative;
+    margin: 0 16px;
+    padding-left: 44px;
+  }
+
+  .profile-track::before {
+    content: "";
+    position: absolute;
+    left: 6px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: linear-gradient(to bottom, var(--amber), var(--hairline) 15%, var(--hairline) 85%, var(--cool));
+  }
+
+  .station-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 8px 9px 0;
+    margin-left: -44px;
+    padding-left: 44px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.15s ease;
+  }
+
+  .station-row:hover, .station-row.active {
+    background: var(--panel-alt);
+  }
+
+  .station-row .marker {
+    position: absolute;
+    left: 3px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--cool);
+    border: 2px solid var(--panel);
+    box-shadow: 0 0 0 1px var(--hairline);
+  }
+
+  .station-row .alt {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-faint);
+    width: 42px;
+    flex-shrink: 0;
+  }
+
+  .station-row .name {
+    flex: 1;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .station-row .temp {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+
+  /* ---------- Panneau detail ---------- */
+
+  .detail {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--panel);
+    border-top: 1px solid var(--hairline);
+    border-radius: 14px 14px 0 0;
+    transform: translateY(100%);
+    transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+    max-height: 70vh;
+    overflow-y: auto;
+    z-index: 500;
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.4);
+  }
+
+  .detail.open { transform: translateY(0); }
+
+  .detail-handle {
+    display: flex;
+    justify-content: center;
+    padding: 10px 0 4px;
+  }
+
+  .detail-handle .bar {
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--hairline);
+  }
+
+  .detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 8px 20px 16px;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .detail-title h2 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 20px;
+  }
+
+  .detail-title .sub {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 3px;
+  }
+
+  .detail-close {
+    background: var(--panel-alt);
+    border: 1px solid var(--hairline);
+    color: var(--text-dim);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-size: 15px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .detail-hero {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 18px 20px 8px;
+  }
+
+  .detail-hero .value {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 44px;
+    line-height: 1;
+  }
+
+  .detail-hero .unit {
+    font-family: var(--font-display);
+    font-size: 18px;
+    color: var(--text-dim);
+  }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
+    background: var(--hairline);
+    margin-top: 12px;
+  }
+
+  .metric {
+    background: var(--panel);
+    padding: 12px 20px;
+  }
+
+  .metric .label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-faint);
+    margin-bottom: 5px;
+  }
+
+  .metric .val {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .metric .val.empty { color: var(--text-faint); font-weight: 500; }
+
+  .wind-arrow {
+    display: inline-block;
+    transition: transform 0.3s ease;
+  }
+
+  footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 20px;
+    border-top: 1px solid var(--hairline);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-faint);
+    background: var(--bg);
+  }
+
+  footer a { color: var(--text-faint); text-decoration: underline; text-underline-offset: 2px; }
+
+  .loading-msg, .error-msg {
+    padding: 20px 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  .error-msg { color: var(--amber); }
+
+  /* Leaflet dark tweaks */
+  .leaflet-container { background: var(--panel); }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+    background: var(--panel-alt);
+    color: var(--text);
+  }
+  .leaflet-popup-content { font-family: var(--font-body); font-size: 12px; margin: 10px 12px; }
+  .leaflet-popup-content b { font-family: var(--font-display); }
+  .leaflet-control-attribution { background: rgba(16,20,26,0.8) !important; color: var(--text-faint) !important; }
+  .leaflet-control-attribution a { color: var(--text-dim) !important; }
+
+  .station-dot {
+    border-radius: 50%;
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 0 1px var(--hairline);
+  }
+
+  /* ---------- Responsive ---------- */
+
+  @media (max-width: 780px) {
+    main {
+      grid-template-columns: 1fr;
+      grid-template-rows: 200px 1fr;
+    }
+    .profile {
+      border-left: none;
+      border-top: 1px solid var(--hairline);
+    }
+    .profile-scroll {
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 0;
+    }
+    .profile-track {
+      display: flex;
+      align-items: flex-end;
+      height: 100%;
+      padding: 12px 16px;
+      margin: 0;
+      gap: 4px;
+    }
+    .profile-track::before {
+      left: 0;
+      right: 0;
+      top: auto;
+      bottom: 34px;
+      width: auto;
+      height: 1px;
+      background: linear-gradient(to right, var(--cool), var(--hairline) 15%, var(--hairline) 85%, var(--amber));
+    }
+    .station-row {
+      flex-direction: column-reverse;
+      margin-left: 0;
+      padding: 0 6px;
+      min-width: 58px;
+      gap: 4px;
+    }
+    .station-row .marker { position: static; margin-bottom: 30px; }
+    .station-row .alt { width: auto; order: 3; }
+    .station-row .name { writing-mode: vertical-rl; text-orientation: mixed; font-size: 10px; height: 50px; flex: none; }
+    .station-row .temp { order: 1; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <header>
+    <div class="brand">
+      <h1>Meteo Vaud</h1>
+      <span class="version">v1</span>
+    </div>
+    <div class="status" id="status">
+      <span class="dot"></span>
+      <span id="statusText">connexion...</span>
+    </div>
+  </header>
+
+  <main>
+    <div id="map"></div>
+
+    <aside class="profile">
+      <div class="profile-label">Profil d'altitude — temperature en direct</div>
+      <div class="profile-scroll">
+        <div class="profile-track" id="profileTrack">
+          <div class="loading-msg">Chargement des stations...</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    <span>Source: MeteoSwiss (SwissMetNet, OGD) · CC-BY</span>
+    <span id="updatedAt">—</span>
+  </footer>
+
+</div>
+
+<div class="detail" id="detail">
+  <div class="detail-handle"><div class="bar"></div></div>
+  <div class="detail-header">
+    <div class="detail-title">
+      <h2 id="dTitle">—</h2>
+      <div class="sub" id="dSub">—</div>
+    </div>
+    <button class="detail-close" id="dClose">✕</button>
+  </div>
+  <div class="detail-hero">
+    <span class="value" id="dTemp">—</span>
+    <span class="unit">°C</span>
+  </div>
+  <div class="detail-grid" id="dGrid"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // -------------------------------------------------------------------
+  // Config
+  // -------------------------------------------------------------------
+  var API_BASE = "https://meteo-vaud.onrender.com";
+  var REFRESH_MS = 10 * 60 * 1000;
+
+  var els = {
+    status: document.getElementById("status"),
+    statusText: document.getElementById("statusText"),
+    updatedAt: document.getElementById("updatedAt"),
+    profileTrack: document.getElementById("profileTrack"),
+    detail: document.getElementById("detail"),
+    dTitle: document.getElementById("dTitle"),
+    dSub: document.getElementById("dSub"),
+    dTemp: document.getElementById("dTemp"),
+    dGrid: document.getElementById("dGrid"),
+    dClose: document.getElementById("dClose")
+  };
+
+  var map = L.map("map", { zoomControl: true, attributionControl: true })
+    .setView([46.55, 6.75], 9);
+
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    maxZoom: 18
+  }).addTo(map);
+
+  var markers = {}; // station_id -> L.circleMarker
+
+  // -------------------------------------------------------------------
+  // Utils
+  // -------------------------------------------------------------------
+
+  function tempColor(t) {
+    // Duotone teal (froid) -> ambre (chaud), pas de rouge.
+    if (t === null || t === undefined) return "#5C6570";
+    var min = 5, max = 33;
+    var ratio = Math.max(0, Math.min(1, (t - min) / (max - min)));
+    var cool = [79, 163, 181];   // #4FA3B5
+    var warm = [201, 138, 29];   // #C98A1D
+    var rgb = cool.map(function (c, i) {
+      return Math.round(c + (warm[i] - c) * ratio);
+    });
+    return "rgb(" + rgb.join(",") + ")";
+  }
+
+  function fmt(v, unit, decimals) {
+    if (v === null || v === undefined) return { text: "—", empty: true };
+    var d = decimals === undefined ? 1 : decimals;
+    return { text: v.toFixed(d) + (unit ? " " + unit : ""), empty: false };
+  }
+
+  function windCompass(deg) {
+    if (deg === null || deg === undefined) return "—";
+    var dirs = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"];
+    return dirs[Math.round(deg / 45) % 8];
+  }
+
+  function timeAgo(iso) {
+    if (!iso) return "—";
+    var diffMin = Math.round((Date.now() - new Date(iso + "Z").getTime()) / 60000);
+    if (diffMin < 1) return "a l'instant";
+    if (diffMin === 1) return "il y a 1 min";
+    if (diffMin < 60) return "il y a " + diffMin + " min";
+    return "il y a " + Math.round(diffMin / 60) + " h";
+  }
+
+  // -------------------------------------------------------------------
+  // Rendu profil d'altitude
+  // -------------------------------------------------------------------
+
+  function renderProfile(readings) {
+    var sorted = readings.slice().sort(function (a, b) {
+      return (b.altitude_m || 0) - (a.altitude_m || 0);
+    });
+
+    els.profileTrack.innerHTML = "";
+
+    sorted.forEach(function (r) {
+      var row = document.createElement("div");
+      row.className = "station-row";
+      row.dataset.id = r.station_id;
+
+      var marker = document.createElement("div");
+      marker.className = "marker";
+      marker.style.background = tempColor(r.temperature);
+      row.appendChild(marker);
+
+      var alt = document.createElement("div");
+      alt.className = "alt";
+      alt.textContent = (r.altitude_m || "—") + "m";
+      row.appendChild(alt);
+
+      var name = document.createElement("div");
+      name.className = "name";
+      name.textContent = r.station_name;
+      row.appendChild(name);
+
+      var temp = document.createElement("div");
+      temp.className = "temp";
+      temp.style.color = tempColor(r.temperature);
+      temp.textContent = r.temperature !== null && r.temperature !== undefined
+        ? r.temperature.toFixed(1) + "°"
+        : "—";
+      row.appendChild(temp);
+
+      row.addEventListener("click", function () { openDetail(r); });
+
+      els.profileTrack.appendChild(row);
+    });
+  }
+
+  // -------------------------------------------------------------------
+  // Rendu carte
+  // -------------------------------------------------------------------
+
+  function renderMap(readings) {
+    readings.forEach(function (r) {
+      var color = tempColor(r.temperature);
+      if (markers[r.station_id]) {
+        markers[r.station_id].setStyle({ fillColor: color });
+        markers[r.station_id].bindPopup(popupHtml(r));
+      } else {
+        var m = L.circleMarker([r.lat, r.lon], {
+          radius: 8,
+          fillColor: color,
+          fillOpacity: 0.9,
+          color: "#10141A",
+          weight: 2,
+          className: "station-dot"
+        }).addTo(map);
+        m.bindPopup(popupHtml(r));
+        m.on("click", function () { openDetail(r); });
+        markers[r.station_id] = m;
+      }
+    });
+  }
+
+  function popupHtml(r) {
+    var t = r.temperature !== null && r.temperature !== undefined ? r.temperature.toFixed(1) + "°C" : "—";
+    return "<b>" + r.station_name + "</b><br>" + t + " · " + (r.altitude_m || "—") + "m";
+  }
+
+  // -------------------------------------------------------------------
+  // Panneau detail
+  // -------------------------------------------------------------------
+
+  function metricBlock(label, valObj, extraHtml) {
+    var div = document.createElement("div");
+    div.className = "metric";
+    var l = document.createElement("div");
+    l.className = "label";
+    l.textContent = label;
+    var v = document.createElement("div");
+    v.className = "val" + (valObj.empty ? " empty" : "");
+    v.innerHTML = extraHtml ? extraHtml : valObj.text;
+    div.appendChild(l);
+    div.appendChild(v);
+    return div;
+  }
+
+  function openDetail(r) {
+    document.querySelectorAll(".station-row").forEach(function (el) {
+      el.classList.toggle("active", el.dataset.id === r.station_id);
+    });
+
+    els.dTitle.textContent = r.station_name;
+    els.dSub.textContent = r.station_id + " · " + (r.altitude_m || "—") + "m · " + timeAgo(r.timestamp);
+    els.dTemp.textContent = r.temperature !== null && r.temperature !== undefined ? r.temperature.toFixed(1) : "—";
+
+    els.dGrid.innerHTML = "";
+
+    var windArrow = "";
+    if (r.vent_direction !== null && r.vent_direction !== undefined) {
+      windArrow = '<span class="wind-arrow" style="transform:rotate(' + r.vent_direction + 'deg)">↓</span> ';
+    }
+    var windText = r.vent_vitesse !== null && r.vent_vitesse !== undefined
+      ? windArrow + r.vent_vitesse.toFixed(1) + " km/h " + windCompass(r.vent_direction)
+      : "—";
+
+    els.dGrid.appendChild(metricBlock("Humidite", fmt(r.humidite, "%", 0)));
+    els.dGrid.appendChild(metricBlock("Vent", { empty: r.vent_vitesse == null, text: windText }, windText));
+    els.dGrid.appendChild(metricBlock("Rafale", fmt(r.vent_rafale, "km/h")));
+    els.dGrid.appendChild(metricBlock("Point de rosee", fmt(r.point_de_rosee, "°C")));
+    els.dGrid.appendChild(metricBlock("Precipitation (10min)", fmt(r.precipitation, "mm")));
+    els.dGrid.appendChild(metricBlock("Pression station", fmt(r.pression_station, "hPa", 0)));
+    els.dGrid.appendChild(metricBlock("Radiation globale", fmt(r.radiation_globale, "W/m²", 0)));
+    els.dGrid.appendChild(metricBlock("Ensoleillement (10min)", fmt(r.duree_ensoleillement, "min", 0)));
+
+    els.detail.classList.add("open");
+
+    if (map) {
+      map.panTo([r.lat, r.lon]);
+    }
+  }
+
+  els.dClose.addEventListener("click", function () {
+    els.detail.classList.remove("open");
+  });
+
+  // -------------------------------------------------------------------
+  // Fetch + status
+  // -------------------------------------------------------------------
+
+  function setStatus(state, text) {
+    els.status.className = "status " + state;
+    els.statusText.textContent = text;
+  }
+
+  function load() {
+    setStatus("", "chargement...");
+    els.profileTrack.innerHTML = '<div class="loading-msg">Reveil du serveur en cours (peut prendre jusqu\'a 50s sur l\'offre gratuite)...</div>';
+
+    fetch(API_BASE + "/stations/current")
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        if (!data.readings || data.readings.length === 0) {
+          els.profileTrack.innerHTML = '<div class="error-msg">Aucune donnee disponible pour le moment.</div>';
+          setStatus("stale", "aucune donnee");
+          return;
+        }
+        renderProfile(data.readings);
+        renderMap(data.readings);
+        setStatus("live", "en direct");
+        els.updatedAt.textContent = "maj " + timeAgo(data.updatedAt);
+      })
+      .catch(function (err) {
+        els.profileTrack.innerHTML = '<div class="error-msg">Impossible de charger les donnees.<br>' + err.message + '</div>';
+        setStatus("stale", "erreur");
+      });
+  }
+
+  load();
+  setInterval(load, REFRESH_MS);
+
+})();
+</script>
+
+</body>
+</html>
