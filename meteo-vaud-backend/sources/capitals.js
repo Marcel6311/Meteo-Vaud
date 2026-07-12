@@ -63,11 +63,12 @@ async function fetchOneCapital(capital) {
 }
 
 /**
- * Recupere la meteo actuelle pour toutes les capitales suivies.
+ * Recupere la meteo actuelle pour une liste de capitales donnee.
+ * @param {Array<Object>} capitalsList - liste au format config/capitals*.js
  * @returns {Promise<Array<Object>>}
  */
-async function fetchAllCapitals() {
-  return Promise.all(CAPITALS.map(fetchOneCapital));
+async function fetchCapitalsList(capitalsList) {
+  return Promise.all(capitalsList.map(fetchOneCapital));
 }
 
-module.exports = { fetchAllCapitals, CAPITALS };
+module.exports = { fetchCapitalsList, CAPITALS };
