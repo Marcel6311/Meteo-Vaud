@@ -481,6 +481,118 @@
     box-shadow: 0 0 0 1px var(--hairline);
   }
 
+  /* ---------- Capitales (overlay + tableau) ---------- */
+
+  .capitals-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 13, 17, 0.75);
+    backdrop-filter: blur(3px);
+    z-index: 2000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .capitals-overlay.open {
+    display: flex;
+  }
+
+  .capitals-panel {
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    width: 100%;
+    max-width: 720px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+
+  .capitals-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .capitals-header h2 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 19px;
+  }
+
+  .capitals-sub {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  .capitals-table-wrap {
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .capitals-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .capitals-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--panel-alt);
+    text-align: left;
+    padding: 10px 16px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    cursor: pointer;
+    border-bottom: 1px solid var(--hairline);
+    white-space: nowrap;
+  }
+
+  .capitals-table thead th.sortable-active {
+    color: var(--amber);
+  }
+
+  .capitals-table tbody td {
+    padding: 9px 16px;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .capitals-table tbody tr:hover {
+    background: var(--panel-alt);
+  }
+
+  .capitals-table .country {
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+
+  .capitals-table .capital {
+    font-weight: 500;
+  }
+
+  .capitals-table .temp {
+    font-family: var(--font-mono);
+    font-weight: 600;
+  }
+
+  .capitals-table .desc {
+    color: var(--text-faint);
+    font-size: 12px;
+    text-transform: capitalize;
+  }
+
   /* ---------- Responsive ---------- */
 
   @media (max-width: 780px) {
@@ -544,6 +656,7 @@
       </div>
       <button class="rain-toggle" id="rainToggle">☂ PLUIE</button>
       <button class="rain-toggle" id="tempToggle">🌡 TEMPERATURE</button>
+      <button class="rain-toggle" id="capitalsToggle">🌍 CAPITALES</button>
       <div class="status" id="status">
         <span class="dot"></span>
         <span id="statusText">connexion...</span>
@@ -594,6 +707,34 @@
   <div class="detail-grid" id="dGrid"></div>
 </div>
 
+<div class="capitals-overlay" id="capitalsOverlay">
+  <div class="capitals-panel">
+    <div class="capitals-header">
+      <div>
+        <h2>Capitales europeennes</h2>
+        <div class="capitals-sub" id="capitalsSub">—</div>
+      </div>
+      <button class="detail-close" id="capitalsClose">✕</button>
+    </div>
+    <div class="capitals-table-wrap">
+      <table class="capitals-table">
+        <thead>
+          <tr>
+            <th data-sort="country">Pays</th>
+            <th data-sort="capital">Capitale</th>
+            <th data-sort="temperature" class="sortable-active">Temp.</th>
+            <th data-sort="humidite">Humidite</th>
+            <th>Ciel</th>
+          </tr>
+        </thead>
+        <tbody id="capitalsBody">
+          <tr><td colspan="5" class="loading-msg">Chargement...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 (function () {
@@ -623,7 +764,12 @@
     rainPrev: document.getElementById("rainPrev"),
     rainPlay: document.getElementById("rainPlay"),
     rainNext: document.getElementById("rainNext"),
-    rainTimestamp: document.getElementById("rainTimestamp")
+    rainTimestamp: document.getElementById("rainTimestamp"),
+    capitalsToggle: document.getElementById("capitalsToggle"),
+    capitalsOverlay: document.getElementById("capitalsOverlay"),
+    capitalsClose: document.getElementById("capitalsClose"),
+    capitalsSub: document.getElementById("capitalsSub"),
+    capitalsBody: document.getElementById("capitalsBody")
   };
 
   var currentScope = "vd";
@@ -1027,6 +1173,134 @@
     } else {
       hideTempLayer();
     }
+  });
+
+  // -------------------------------------------------------------------
+  // Tableau des capitales europeennes
+  // -------------------------------------------------------------------
+
+  var capitalsData = [];
+  var capitalsSortKey = "temperature";
+  var capitalsSortDir = "desc"; // desc par defaut : plus chaud en premier
+  var capitalsLoaded = false;
+
+  function capitalsColorRange() {
+    var temps = capitalsData
+      .map(function (c) { return c.temperature; })
+      .filter(function (t) { return t !== null && t !== undefined; });
+    if (temps.length === 0) return { min: 5, max: 33 };
+    return { min: Math.min.apply(null, temps), max: Math.max.apply(null, temps) };
+  }
+
+  function capitalTempColor(t, range) {
+    if (t === null || t === undefined) return "#5C6570";
+    var ratio = Math.max(0, Math.min(1, (t - range.min) / (range.max - range.min)));
+    var cool = [79, 163, 181];
+    var warm = [201, 138, 29];
+    var rgb = cool.map(function (c, i) { return Math.round(c + (warm[i] - c) * ratio); });
+    return "rgb(" + rgb.join(",") + ")";
+  }
+
+  function renderCapitalsTable() {
+    var range = capitalsColorRange();
+    var sorted = capitalsData.slice().sort(function (a, b) {
+      var av = a[capitalsSortKey];
+      var bv = b[capitalsSortKey];
+      if (av === null || av === undefined) return 1;
+      if (bv === null || bv === undefined) return -1;
+      if (typeof av === "string") {
+        return capitalsSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      }
+      return capitalsSortDir === "asc" ? av - bv : bv - av;
+    });
+
+    els.capitalsBody.innerHTML = "";
+
+    sorted.forEach(function (c) {
+      var tr = document.createElement("tr");
+
+      var tdCountry = document.createElement("td");
+      tdCountry.className = "country";
+      tdCountry.textContent = c.country;
+
+      var tdCapital = document.createElement("td");
+      tdCapital.className = "capital";
+      tdCapital.textContent = c.capital;
+
+      var tdTemp = document.createElement("td");
+      tdTemp.className = "temp";
+      if (c.temperature !== null && c.temperature !== undefined) {
+        tdTemp.textContent = c.temperature.toFixed(1) + "°C";
+        tdTemp.style.color = capitalTempColor(c.temperature, range);
+      } else {
+        tdTemp.textContent = "n/d";
+        tdTemp.style.color = "#5C6570";
+      }
+
+      var tdHum = document.createElement("td");
+      tdHum.className = "country";
+      tdHum.textContent = c.humidite !== null && c.humidite !== undefined ? c.humidite + "%" : "—";
+
+      var tdDesc = document.createElement("td");
+      tdDesc.className = "desc";
+      tdDesc.textContent = c.description || "—";
+
+      tr.appendChild(tdCountry);
+      tr.appendChild(tdCapital);
+      tr.appendChild(tdTemp);
+      tr.appendChild(tdHum);
+      tr.appendChild(tdDesc);
+      els.capitalsBody.appendChild(tr);
+    });
+
+    document.querySelectorAll(".capitals-table thead th").forEach(function (th) {
+      th.classList.toggle("sortable-active", th.dataset.sort === capitalsSortKey);
+    });
+  }
+
+  function loadCapitals() {
+    els.capitalsBody.innerHTML = '<tr><td colspan="5" class="loading-msg">Chargement...</td></tr>';
+    fetch(API_BASE + "/capitals/current")
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        capitalsData = data.readings || [];
+        capitalsLoaded = true;
+        els.capitalsSub.textContent = data.count + " capitales · maj " + timeAgo(data.updatedAt);
+        renderCapitalsTable();
+      })
+      .catch(function (err) {
+        els.capitalsBody.innerHTML =
+          '<tr><td colspan="5" class="error-msg">Impossible de charger les donnees.<br>' + err.message + "</td></tr>";
+      });
+  }
+
+  document.querySelectorAll(".capitals-table thead th[data-sort]").forEach(function (th) {
+    th.addEventListener("click", function () {
+      var key = th.dataset.sort;
+      if (capitalsSortKey === key) {
+        capitalsSortDir = capitalsSortDir === "asc" ? "desc" : "asc";
+      } else {
+        capitalsSortKey = key;
+        capitalsSortDir = key === "country" || key === "capital" ? "asc" : "desc";
+      }
+      renderCapitalsTable();
+    });
+  });
+
+  els.capitalsToggle.addEventListener("click", function () {
+    els.capitalsOverlay.classList.add("open");
+    if (!capitalsLoaded) loadCapitals();
+  });
+
+  els.capitalsClose.addEventListener("click", function () {
+    els.capitalsOverlay.classList.remove("open");
+  });
+
+  els.capitalsOverlay.addEventListener("click", function (e) {
+    if (e.target === els.capitalsOverlay) els.capitalsOverlay.classList.remove("open");
   });
 
   // -------------------------------------------------------------------
