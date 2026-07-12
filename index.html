@@ -980,12 +980,33 @@
   var tempLayer = null;
   var tempVisible = false;
 
+  // Palette personnalisee alignee sur l'identite visuelle de l'app
+  // (violet froid -> teal -> ambre -> orange brule pour la canicule),
+  // plutot que le degrade pastel par defaut d'OpenWeatherMap qui se
+  // delave sur fond sombre. Valeurs en degres Celsius.
+  var TEMP_PALETTE =
+    "-20:2b1b52;" +
+    "-10:3e5b99;" +
+    "0:4fa3b5;" +
+    "10:74c69d;" +
+    "20:d4b483;" +
+    "25:c98a1d;" +
+    "32:e0672b;" +
+    "40:8c2f1b";
+
+  function buildTempTileUrl() {
+    // API "2.0" (pas 3h, incluse dans l'offre gratuite) - la version
+    // "1h" equivalente necessite un abonnement payant.
+    return "https://maps.openweathermap.org/maps/2.0/weather/TA2/{z}/{x}/{y}" +
+      "?appid=" + OWM_API_KEY +
+      "&fill_bound=true" +
+      "&opacity=0.6" +
+      "&palette=" + TEMP_PALETTE;
+  }
+
   function showTempLayer() {
     if (!tempLayer) {
-      tempLayer = L.tileLayer(
-        "https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=" + OWM_API_KEY,
-        { opacity: 0.55, zIndex: 400 }
-      );
+      tempLayer = L.tileLayer(buildTempTileUrl(), { zIndex: 400 });
     }
     map.addLayer(tempLayer);
   }
