@@ -24,6 +24,7 @@ const EXTREME_PLACES = require("./config/extreme-places");
 const { fetchCurrentReadings } = require("./sources/swissmetnet");
 const { getAllStations } = require("./sources/stationRegistry");
 const { fetchCapitalsList } = require("./sources/capitals");
+const { fetchAzureMapsForStations } = require("./sources/azuremaps");
 
 const app = express();
 app.use(cors());
@@ -221,6 +222,44 @@ app.get("/capitals/current", (req, res) => {
     count: cache.readings.length,
     readings: cache.readings
   });
+});
+
+// GET /stations/compare - SwissMetNet vs Azure Maps sur les stations vaudoises
+app.get("/stations/compare", async (req, res) => {
+  try {
+    const azureReadings = await fetchAzureMapsForStations(VD_STATIONS);
+    const azureByCode = Object.fromEntries(azureReadings.map((r) => [r.station_id, r]));
+
+    const comparison = caches.vd.readings.map((swiss) => {
+      const azure = azureByCode[swiss.station_id];
+      const diff =
+        swiss.temperature !== null && swiss.temperature !== undefined &&
+        azure && azure.temperature !== null && azure.temperature !== undefined
+          ? Math.round((azure.temperature - swiss.temperature) * 10) / 10
+          : null;
+
+      return {
+        station_id: swiss.station_id,
+        station_name: swiss.station_name,
+        swissmetnet_temperature: swiss.temperature,
+        azuremaps_temperature: azure ? azure.temperature : null,
+        azuremaps_description: azure ? azure.description : null,
+        ecart: diff
+      };
+    });
+
+    res.json({
+      sources: {
+        swissmetnet: "MeteoSwiss (SwissMetNet, OGD) - mesure officielle",
+        azuremaps: "Azure Maps Weather (Microsoft) - produit meteo commercial"
+      },
+      note: "Azure Maps Weather n'est pas confirme comme utilisant le modele Aurora en interne.",
+      updatedAt: new Date().toISOString(),
+      comparison
+    });
+  } catch (err) {
+    res.status(502).json({ error: "Echec de la comparaison", detail: err.message });
+  }
 });
 
 app.listen(PORT, async () => {
