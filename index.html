@@ -807,7 +807,9 @@
 
     rainLayer = L.tileLayer(buildRainTileUrl(host, latestFrame), {
       opacity: 0.65,
-      zIndex: 500
+      zIndex: 500,
+      maxNativeZoom: 7, // RainViewer (offre gratuite) ne fournit pas de tuiles au-dela du niveau 7
+      minZoom: 0
     });
     map.addLayer(rainLayer);
   }
