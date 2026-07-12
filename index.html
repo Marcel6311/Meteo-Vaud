@@ -497,6 +497,7 @@
         <button data-scope="ch">SUISSE</button>
       </div>
       <button class="rain-toggle" id="rainToggle">☂ PLUIE</button>
+      <button class="rain-toggle" id="tempToggle">🌡 TEMPERATURE</button>
       <div class="status" id="status">
         <span class="dot"></span>
         <span id="statusText">connexion...</span>
@@ -518,7 +519,7 @@
   </main>
 
   <footer>
-    <span>Source: MeteoSwiss (SwissMetNet, OGD) · CC-BY · Pluie: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a></span>
+    <span>Source: MeteoSwiss (SwissMetNet, OGD) · CC-BY · Pluie: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> · Temp. Europe: <a href="https://openweathermap.org/" target="_blank" rel="noopener">OpenWeatherMap</a></span>
     <span id="updatedAt">—</span>
   </footer>
 
@@ -563,7 +564,8 @@
     dGrid: document.getElementById("dGrid"),
     dClose: document.getElementById("dClose"),
     scopeToggle: document.getElementById("scopeToggle"),
-    rainToggle: document.getElementById("rainToggle")
+    rainToggle: document.getElementById("rainToggle"),
+    tempToggle: document.getElementById("tempToggle")
   };
 
   var currentScope = "vd";
@@ -849,6 +851,40 @@
 
   fetchRainFrames();
   setInterval(fetchRainFrames, 5 * 60 * 1000); // radar rafraichi toutes les 5 min chez RainViewer
+
+  // -------------------------------------------------------------------
+  // Calque temperature Europe (OpenWeatherMap)
+  // -------------------------------------------------------------------
+  // Cle "tuiles" cote client (usage prevu par OpenWeatherMap pour ce
+  // produit, pas un secret serveur comme Netatmo).
+
+  var OWM_API_KEY = "40e0a05ac561c2b71d1f2610cae0012d";
+  var tempLayer = null;
+  var tempVisible = false;
+
+  function showTempLayer() {
+    if (!tempLayer) {
+      tempLayer = L.tileLayer(
+        "https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=" + OWM_API_KEY,
+        { opacity: 0.55, zIndex: 400 }
+      );
+    }
+    map.addLayer(tempLayer);
+  }
+
+  function hideTempLayer() {
+    if (tempLayer) map.removeLayer(tempLayer);
+  }
+
+  els.tempToggle.addEventListener("click", function () {
+    tempVisible = !tempVisible;
+    els.tempToggle.classList.toggle("active", tempVisible);
+    if (tempVisible) {
+      showTempLayer();
+    } else {
+      hideTempLayer();
+    }
+  });
 
   // -------------------------------------------------------------------
   // Fetch + status
