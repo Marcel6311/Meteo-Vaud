@@ -106,6 +106,39 @@
     box-shadow: 0 0 0 3px rgba(201, 138, 29, 0.15);
   }
 
+  .scope-toggle {
+    display: flex;
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    padding: 2px;
+    gap: 2px;
+  }
+
+  .scope-toggle button {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    color: var(--text-dim);
+    background: transparent;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .scope-toggle button.active {
+    background: var(--panel-alt);
+    color: var(--amber);
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
   main {
     display: grid;
     grid-template-columns: 1fr 300px;
@@ -437,11 +470,17 @@
   <header>
     <div class="brand">
       <h1>Meteo Vaud</h1>
-      <span class="version">v1</span>
+      <span class="version">v2</span>
     </div>
-    <div class="status" id="status">
-      <span class="dot"></span>
-      <span id="statusText">connexion...</span>
+    <div class="header-right">
+      <div class="scope-toggle" id="scopeToggle">
+        <button data-scope="vd" class="active">VAUD</button>
+        <button data-scope="ch">SUISSE</button>
+      </div>
+      <div class="status" id="status">
+        <span class="dot"></span>
+        <span id="statusText">connexion...</span>
+      </div>
     </div>
   </header>
 
@@ -502,11 +541,19 @@
     dSub: document.getElementById("dSub"),
     dTemp: document.getElementById("dTemp"),
     dGrid: document.getElementById("dGrid"),
-    dClose: document.getElementById("dClose")
+    dClose: document.getElementById("dClose"),
+    scopeToggle: document.getElementById("scopeToggle")
+  };
+
+  var currentScope = "vd";
+
+  var SCOPE_VIEWS = {
+    vd: { center: [46.55, 6.75], zoom: 9 },
+    ch: { center: [46.8, 8.3], zoom: 7 }
   };
 
   var map = L.map("map", { zoomControl: true, attributionControl: true })
-    .setView([46.55, 6.75], 9);
+    .setView(SCOPE_VIEWS.vd.center, SCOPE_VIEWS.vd.zoom);
 
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
     attribution: '&copy; OpenStreetMap &copy; CARTO',
@@ -618,25 +665,30 @@
   // Rendu carte
   // -------------------------------------------------------------------
 
+  function clearMarkers() {
+    Object.keys(markers).forEach(function (id) {
+      map.removeLayer(markers[id]);
+    });
+    markers = {};
+  }
+
   function renderMap(readings) {
+    clearMarkers();
+    var radius = readings.length > 50 ? 5 : 8; // Suisse entiere = plus de points, plus petits
+
     readings.forEach(function (r) {
       var color = tempColor(r.temperature);
-      if (markers[r.station_id]) {
-        markers[r.station_id].setStyle({ fillColor: color });
-        markers[r.station_id].bindPopup(popupHtml(r));
-      } else {
-        var m = L.circleMarker([r.lat, r.lon], {
-          radius: 8,
-          fillColor: color,
-          fillOpacity: 0.9,
-          color: "#10141A",
-          weight: 2,
-          className: "station-dot"
-        }).addTo(map);
-        m.bindPopup(popupHtml(r));
-        m.on("click", function () { openDetail(r); });
-        markers[r.station_id] = m;
-      }
+      var m = L.circleMarker([r.lat, r.lon], {
+        radius: radius,
+        fillColor: color,
+        fillOpacity: 0.9,
+        color: "#10141A",
+        weight: radius > 6 ? 2 : 1,
+        className: "station-dot"
+      }).addTo(map);
+      m.bindPopup(popupHtml(r));
+      m.on("click", function () { openDetail(r); });
+      markers[r.station_id] = m;
     });
   }
 
@@ -715,7 +767,7 @@
     setStatus("", "chargement...");
     els.profileTrack.innerHTML = '<div class="loading-msg">Reveil du serveur en cours (peut prendre jusqu\'a 50s sur l\'offre gratuite)...</div>';
 
-    fetch(API_BASE + "/stations/current")
+    fetch(API_BASE + "/stations/current?scope=" + currentScope)
       .then(function (res) {
         if (!res.ok) throw new Error("HTTP " + res.status);
         return res.json();
@@ -729,7 +781,7 @@
         computeColorRange(data.readings);
         renderProfile(data.readings);
         renderMap(data.readings);
-        setStatus("live", "en direct");
+        setStatus("live", "en direct · " + data.count + " stations");
         els.updatedAt.textContent = "maj " + timeAgo(data.updatedAt);
       })
       .catch(function (err) {
@@ -737,6 +789,26 @@
         setStatus("stale", "erreur");
       });
   }
+
+  function switchScope(scope) {
+    if (scope === currentScope) return;
+    currentScope = scope;
+
+    els.scopeToggle.querySelectorAll("button").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.scope === scope);
+    });
+
+    els.detail.classList.remove("open");
+
+    var view = SCOPE_VIEWS[scope];
+    map.setView(view.center, view.zoom);
+
+    load();
+  }
+
+  els.scopeToggle.querySelectorAll("button").forEach(function (btn) {
+    btn.addEventListener("click", function () { switchScope(btn.dataset.scope); });
+  });
 
   load();
   setInterval(load, REFRESH_MS);
