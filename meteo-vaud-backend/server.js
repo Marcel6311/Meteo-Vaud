@@ -1,15 +1,16 @@
 // server.js
 //
-// Meteo-Vaud backend v3
-// Ingestion SwissMetNet + capitales europeennes + endpoints REST.
+// Meteo-Vaud backend v4
+// Ingestion SwissMetNet + capitales mondiales par region + endpoints REST.
 //
 // Scopes stations disponibles :
 //   - "vd" (par defaut) : les 14 stations vaudoises curatees (config/stations.js)
 //   - "ch" : toutes les stations SwissMetNet de Suisse (~150), decouvertes
 //            automatiquement via sources/stationRegistry.js
 //
-// Nouveau : GET /capitals/current expose la temperature actuelle d'environ
-// 45 capitales europeennes (source OpenWeatherMap, config/capitals.js).
+// GET /capitals/current?region=... expose la temperature actuelle des
+// capitales pour une region donnee (source OpenWeatherMap) :
+//   europe (defaut), north_america, south_america, africa, asia, oceania
 //
 // Root Directory sur Render : meteo-vaud-backend
 // Start command : npm start
@@ -17,9 +18,11 @@
 const express = require("express");
 const cors = require("cors");
 const VD_STATIONS = require("./config/stations");
+const EUROPE_CAPITALS = require("./config/capitals");
+const WORLD_CAPITALS = require("./config/capitals-world");
 const { fetchCurrentReadings } = require("./sources/swissmetnet");
 const { getAllStations } = require("./sources/stationRegistry");
-const { fetchAllCapitals } = require("./sources/capitals");
+const { fetchCapitalsList } = require("./sources/capitals");
 
 const app = express();
 app.use(cors());
@@ -28,6 +31,17 @@ const PORT = process.env.PORT || 3000;
 const DATA_REFRESH_MS = 10 * 60 * 1000; // 10 minutes, aligne sur la cadence SwissMetNet
 const CAPITALS_REFRESH_MS = 30 * 60 * 1000; // 30 minutes, largement suffisant pour des capitales
 
+// Regions de capitales disponibles. La liste des stations est chargee
+// une seule fois ici ; le cache de mesures est construit dans REGION_CACHES.
+const CAPITAL_REGIONS = {
+  europe: EUROPE_CAPITALS,
+  north_america: WORLD_CAPITALS.NORTH_AMERICA,
+  south_america: WORLD_CAPITALS.SOUTH_AMERICA,
+  africa: WORLD_CAPITALS.AFRICA,
+  asia: WORLD_CAPITALS.ASIA,
+  oceania: WORLD_CAPITALS.OCEANIA
+};
+
 // Un cache separe par scope station, meme forme pour les deux :
 // { updatedAt: ISOString, readings: [...], lastError: string|null }
 let caches = {
@@ -35,12 +49,22 @@ let caches = {
   ch: { updatedAt: null, readings: [], lastError: null }
 };
 
-let capitalsCache = { updatedAt: null, readings: [], lastError: null };
 let chStationsCount = null; // rempli au premier refresh du scope "ch"
+
+// Cache par region de capitales, meme forme.
+let capitalCaches = {};
+Object.keys(CAPITAL_REGIONS).forEach((region) => {
+  capitalCaches[region] = { updatedAt: null, readings: [], lastError: null };
+});
 
 function pickScope(req) {
   const scope = (req.query.scope || "vd").toLowerCase();
   return scope === "ch" ? "ch" : "vd";
+}
+
+function pickRegion(req) {
+  const region = (req.query.region || "europe").toLowerCase();
+  return CAPITAL_REGIONS[region] ? region : "europe";
 }
 
 async function refreshScope(scope) {
@@ -69,25 +93,42 @@ async function refreshAll() {
   await refreshScope("ch");
 }
 
-async function refreshCapitals() {
+async function refreshCapitalRegion(region) {
   try {
-    const readings = await fetchAllCapitals();
-    capitalsCache = {
+    const readings = await fetchCapitalsList(CAPITAL_REGIONS[region]);
+    capitalCaches[region] = {
       updatedAt: new Date().toISOString(),
       readings,
       lastError: null
     };
     console.log(
-      `[refresh:capitals] ${readings.length} capitales mises a jour (${capitalsCache.updatedAt})`
+      `[refresh:capitals:${region}] ${readings.length} capitales mises a jour (${capitalCaches[region].updatedAt})`
     );
   } catch (err) {
-    capitalsCache.lastError = err.message;
-    console.error("[refresh:capitals] echec :", err.message);
+    capitalCaches[region].lastError = err.message;
+    console.error(`[refresh:capitals:${region}] echec :`, err.message);
+  }
+}
+
+async function refreshAllCapitalRegions() {
+  // Sequentiel plutot qu'en parallele : evite d'envoyer ~200 requetes
+  // simultanees a OpenWeatherMap et de risquer un plafond par minute.
+  for (const region of Object.keys(CAPITAL_REGIONS)) {
+    await refreshCapitalRegion(region);
   }
 }
 
 // GET /health - verification rapide de l'etat du service
 app.get("/health", (req, res) => {
+  const capitalsHealth = {};
+  Object.keys(capitalCaches).forEach((region) => {
+    capitalsHealth[region] = {
+      lastUpdated: capitalCaches[region].updatedAt,
+      capitalsTracked: capitalCaches[region].readings.length,
+      lastError: capitalCaches[region].lastError
+    };
+  });
+
   res.json({
     status: "ok",
     vd: {
@@ -100,11 +141,7 @@ app.get("/health", (req, res) => {
       stationsTracked: chStationsCount,
       lastError: caches.ch.lastError
     },
-    capitals: {
-      lastUpdated: capitalsCache.updatedAt,
-      capitalsTracked: capitalsCache.readings.length,
-      lastError: capitalsCache.lastError
-    }
+    capitals: capitalsHealth
   });
 });
 
@@ -160,21 +197,34 @@ app.get("/stations/:code", (req, res) => {
   });
 });
 
-// GET /capitals/current - temperature actuelle des capitales europeennes
+// GET /capitals/regions - liste des regions disponibles
+app.get("/capitals/regions", (req, res) => {
+  res.json({
+    regions: Object.keys(CAPITAL_REGIONS).map((region) => ({
+      key: region,
+      count: CAPITAL_REGIONS[region].length
+    }))
+  });
+});
+
+// GET /capitals/current?region=... - temperature actuelle des capitales
 app.get("/capitals/current", (req, res) => {
+  const region = pickRegion(req);
+  const cache = capitalCaches[region];
   res.json({
     source: "OpenWeatherMap (Current Weather Data)",
     licence: "Voir conditions OpenWeatherMap",
-    updatedAt: capitalsCache.updatedAt,
-    count: capitalsCache.readings.length,
-    readings: capitalsCache.readings
+    region,
+    updatedAt: cache.updatedAt,
+    count: cache.readings.length,
+    readings: cache.readings
   });
 });
 
 app.listen(PORT, async () => {
   console.log(`Meteo-Vaud backend demarre sur le port ${PORT}`);
   await refreshAll(); // premier chargement immediat au demarrage (vd + ch)
-  await refreshCapitals();
+  await refreshAllCapitalRegions();
   setInterval(refreshAll, DATA_REFRESH_MS);
-  setInterval(refreshCapitals, CAPITALS_REFRESH_MS);
+  setInterval(refreshAllCapitalRegions, CAPITALS_REFRESH_MS);
 });
