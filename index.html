@@ -533,6 +533,33 @@
     margin-top: 4px;
   }
 
+  .region-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .region-tabs button {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    color: var(--text-dim);
+    background: var(--panel-alt);
+    border: 1px solid var(--hairline);
+    padding: 6px 11px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .region-tabs button.active {
+    background: rgba(201, 138, 29, 0.15);
+    color: var(--amber);
+    border-color: var(--amber);
+  }
+
   .capitals-table-wrap {
     overflow-y: auto;
     flex: 1;
@@ -711,10 +738,18 @@
   <div class="capitals-panel">
     <div class="capitals-header">
       <div>
-        <h2>Capitales europeennes</h2>
+        <h2>Capitales du monde</h2>
         <div class="capitals-sub" id="capitalsSub">—</div>
       </div>
       <button class="detail-close" id="capitalsClose">✕</button>
+    </div>
+    <div class="region-tabs" id="regionTabs">
+      <button data-region="europe" class="active">Europe</button>
+      <button data-region="north_america">Amerique du Nord</button>
+      <button data-region="south_america">Amerique du Sud</button>
+      <button data-region="africa">Afrique</button>
+      <button data-region="asia">Asie</button>
+      <button data-region="oceania">Oceanie</button>
     </div>
     <div class="capitals-table-wrap">
       <table class="capitals-table">
@@ -769,7 +804,8 @@
     capitalsOverlay: document.getElementById("capitalsOverlay"),
     capitalsClose: document.getElementById("capitalsClose"),
     capitalsSub: document.getElementById("capitalsSub"),
-    capitalsBody: document.getElementById("capitalsBody")
+    capitalsBody: document.getElementById("capitalsBody"),
+    regionTabs: document.getElementById("regionTabs")
   };
 
   var currentScope = "vd";
@@ -1176,16 +1212,16 @@
   });
 
   // -------------------------------------------------------------------
-  // Tableau des capitales europeennes
+  // Tableau des capitales (Europe + 5 autres regions)
   // -------------------------------------------------------------------
 
-  var capitalsData = [];
+  var capitalsCacheByRegion = {}; // region -> { readings, updatedAt }
+  var currentRegion = "europe";
   var capitalsSortKey = "temperature";
   var capitalsSortDir = "desc"; // desc par defaut : plus chaud en premier
-  var capitalsLoaded = false;
 
-  function capitalsColorRange() {
-    var temps = capitalsData
+  function capitalsColorRange(data) {
+    var temps = data
       .map(function (c) { return c.temperature; })
       .filter(function (t) { return t !== null && t !== undefined; });
     if (temps.length === 0) return { min: 5, max: 33 };
@@ -1202,8 +1238,11 @@
   }
 
   function renderCapitalsTable() {
-    var range = capitalsColorRange();
-    var sorted = capitalsData.slice().sort(function (a, b) {
+    var entry = capitalsCacheByRegion[currentRegion];
+    if (!entry) return;
+
+    var range = capitalsColorRange(entry.readings);
+    var sorted = entry.readings.slice().sort(function (a, b) {
       var av = a[capitalsSortKey];
       var bv = b[capitalsSortKey];
       if (av === null || av === undefined) return 1;
@@ -1256,25 +1295,42 @@
     document.querySelectorAll(".capitals-table thead th").forEach(function (th) {
       th.classList.toggle("sortable-active", th.dataset.sort === capitalsSortKey);
     });
+
+    els.capitalsSub.textContent = entry.readings.length + " capitales · maj " + timeAgo(entry.updatedAt);
   }
 
-  function loadCapitals() {
+  function loadRegion(region) {
     els.capitalsBody.innerHTML = '<tr><td colspan="5" class="loading-msg">Chargement...</td></tr>';
-    fetch(API_BASE + "/capitals/current")
+    fetch(API_BASE + "/capitals/current?region=" + region)
       .then(function (res) {
         if (!res.ok) throw new Error("HTTP " + res.status);
         return res.json();
       })
       .then(function (data) {
-        capitalsData = data.readings || [];
-        capitalsLoaded = true;
-        els.capitalsSub.textContent = data.count + " capitales · maj " + timeAgo(data.updatedAt);
-        renderCapitalsTable();
+        capitalsCacheByRegion[region] = {
+          readings: data.readings || [],
+          updatedAt: data.updatedAt
+        };
+        if (currentRegion === region) renderCapitalsTable();
       })
       .catch(function (err) {
-        els.capitalsBody.innerHTML =
-          '<tr><td colspan="5" class="error-msg">Impossible de charger les donnees.<br>' + err.message + "</td></tr>";
+        if (currentRegion === region) {
+          els.capitalsBody.innerHTML =
+            '<tr><td colspan="5" class="error-msg">Impossible de charger les donnees.<br>' + err.message + "</td></tr>";
+        }
       });
+  }
+
+  function switchRegion(region) {
+    currentRegion = region;
+    els.regionTabs.querySelectorAll("button").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.region === region);
+    });
+    if (capitalsCacheByRegion[region]) {
+      renderCapitalsTable();
+    } else {
+      loadRegion(region);
+    }
   }
 
   document.querySelectorAll(".capitals-table thead th[data-sort]").forEach(function (th) {
@@ -1290,9 +1346,13 @@
     });
   });
 
+  els.regionTabs.querySelectorAll("button").forEach(function (btn) {
+    btn.addEventListener("click", function () { switchRegion(btn.dataset.region); });
+  });
+
   els.capitalsToggle.addEventListener("click", function () {
     els.capitalsOverlay.classList.add("open");
-    if (!capitalsLoaded) loadCapitals();
+    if (!capitalsCacheByRegion[currentRegion]) loadRegion(currentRegion);
   });
 
   els.capitalsClose.addEventListener("click", function () {
