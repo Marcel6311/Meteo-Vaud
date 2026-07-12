@@ -1,12 +1,15 @@
 // server.js
 //
-// Meteo-Vaud backend v2
-// Ingestion SwissMetNet + endpoints REST pour le frontend.
+// Meteo-Vaud backend v3
+// Ingestion SwissMetNet + capitales europeennes + endpoints REST.
 //
-// Deux "scopes" disponibles :
+// Scopes stations disponibles :
 //   - "vd" (par defaut) : les 14 stations vaudoises curatees (config/stations.js)
 //   - "ch" : toutes les stations SwissMetNet de Suisse (~150), decouvertes
 //            automatiquement via sources/stationRegistry.js
+//
+// Nouveau : GET /capitals/current expose la temperature actuelle d'environ
+// 45 capitales europeennes (source OpenWeatherMap, config/capitals.js).
 //
 // Root Directory sur Render : meteo-vaud-backend
 // Start command : npm start
@@ -16,20 +19,23 @@ const cors = require("cors");
 const VD_STATIONS = require("./config/stations");
 const { fetchCurrentReadings } = require("./sources/swissmetnet");
 const { getAllStations } = require("./sources/stationRegistry");
+const { fetchAllCapitals } = require("./sources/capitals");
 
 const app = express();
 app.use(cors());
 
 const PORT = process.env.PORT || 3000;
 const DATA_REFRESH_MS = 10 * 60 * 1000; // 10 minutes, aligne sur la cadence SwissMetNet
+const CAPITALS_REFRESH_MS = 30 * 60 * 1000; // 30 minutes, largement suffisant pour des capitales
 
-// Un cache separe par scope, meme forme pour les deux :
+// Un cache separe par scope station, meme forme pour les deux :
 // { updatedAt: ISOString, readings: [...], lastError: string|null }
 let caches = {
   vd: { updatedAt: null, readings: [], lastError: null },
   ch: { updatedAt: null, readings: [], lastError: null }
 };
 
+let capitalsCache = { updatedAt: null, readings: [], lastError: null };
 let chStationsCount = null; // rempli au premier refresh du scope "ch"
 
 function pickScope(req) {
@@ -63,6 +69,23 @@ async function refreshAll() {
   await refreshScope("ch");
 }
 
+async function refreshCapitals() {
+  try {
+    const readings = await fetchAllCapitals();
+    capitalsCache = {
+      updatedAt: new Date().toISOString(),
+      readings,
+      lastError: null
+    };
+    console.log(
+      `[refresh:capitals] ${readings.length} capitales mises a jour (${capitalsCache.updatedAt})`
+    );
+  } catch (err) {
+    capitalsCache.lastError = err.message;
+    console.error("[refresh:capitals] echec :", err.message);
+  }
+}
+
 // GET /health - verification rapide de l'etat du service
 app.get("/health", (req, res) => {
   res.json({
@@ -76,6 +99,11 @@ app.get("/health", (req, res) => {
       lastUpdated: caches.ch.updatedAt,
       stationsTracked: chStationsCount,
       lastError: caches.ch.lastError
+    },
+    capitals: {
+      lastUpdated: capitalsCache.updatedAt,
+      capitalsTracked: capitalsCache.readings.length,
+      lastError: capitalsCache.lastError
     }
   });
 });
@@ -132,8 +160,21 @@ app.get("/stations/:code", (req, res) => {
   });
 });
 
+// GET /capitals/current - temperature actuelle des capitales europeennes
+app.get("/capitals/current", (req, res) => {
+  res.json({
+    source: "OpenWeatherMap (Current Weather Data)",
+    licence: "Voir conditions OpenWeatherMap",
+    updatedAt: capitalsCache.updatedAt,
+    count: capitalsCache.readings.length,
+    readings: capitalsCache.readings
+  });
+});
+
 app.listen(PORT, async () => {
   console.log(`Meteo-Vaud backend demarre sur le port ${PORT}`);
   await refreshAll(); // premier chargement immediat au demarrage (vd + ch)
+  await refreshCapitals();
   setInterval(refreshAll, DATA_REFRESH_MS);
+  setInterval(refreshCapitals, CAPITALS_REFRESH_MS);
 });
