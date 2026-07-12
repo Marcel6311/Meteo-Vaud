@@ -560,6 +560,49 @@
     border-color: var(--amber);
   }
 
+  .extremes-row {
+    display: flex;
+    gap: 10px;
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .extreme-card {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--panel-alt);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    padding: 10px 14px;
+  }
+
+  .extreme-card.hot { border-color: rgba(201, 138, 29, 0.4); }
+  .extreme-card.cold { border-color: rgba(79, 163, 181, 0.4); }
+
+  .extreme-icon {
+    font-size: 18px;
+  }
+
+  .extreme-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 2px;
+  }
+
+  .extreme-value {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .extreme-card.hot .extreme-value { color: var(--amber); }
+  .extreme-card.cold .extreme-value { color: var(--cool); }
+
   .capitals-table-wrap {
     overflow-y: auto;
     flex: 1;
@@ -751,6 +794,22 @@
       <button data-region="asia">Asie</button>
       <button data-region="oceania">Oceanie</button>
     </div>
+    <div class="extremes-row" id="extremesRow">
+      <div class="extreme-card hot">
+        <span class="extreme-icon">🔥</span>
+        <div>
+          <div class="extreme-label">Plus chaud</div>
+          <div class="extreme-value" id="hotValue">—</div>
+        </div>
+      </div>
+      <div class="extreme-card cold">
+        <span class="extreme-icon">❄️</span>
+        <div>
+          <div class="extreme-label">Plus froid</div>
+          <div class="extreme-value" id="coldValue">—</div>
+        </div>
+      </div>
+    </div>
     <div class="capitals-table-wrap">
       <table class="capitals-table">
         <thead>
@@ -805,7 +864,9 @@
     capitalsClose: document.getElementById("capitalsClose"),
     capitalsSub: document.getElementById("capitalsSub"),
     capitalsBody: document.getElementById("capitalsBody"),
-    regionTabs: document.getElementById("regionTabs")
+    regionTabs: document.getElementById("regionTabs"),
+    hotValue: document.getElementById("hotValue"),
+    coldValue: document.getElementById("coldValue")
   };
 
   var currentScope = "vd";
@@ -1237,9 +1298,29 @@
     return "rgb(" + rgb.join(",") + ")";
   }
 
+  function updateExtremes(readings) {
+    var withTemp = readings.filter(function (c) {
+      return c.temperature !== null && c.temperature !== undefined;
+    });
+
+    if (withTemp.length === 0) {
+      els.hotValue.textContent = "—";
+      els.coldValue.textContent = "—";
+      return;
+    }
+
+    var hottest = withTemp.reduce(function (a, b) { return b.temperature > a.temperature ? b : a; });
+    var coldest = withTemp.reduce(function (a, b) { return b.temperature < a.temperature ? b : a; });
+
+    els.hotValue.textContent = hottest.temperature.toFixed(1) + "°C — " + hottest.capital + ", " + hottest.country;
+    els.coldValue.textContent = coldest.temperature.toFixed(1) + "°C — " + coldest.capital + ", " + coldest.country;
+  }
+
   function renderCapitalsTable() {
     var entry = capitalsCacheByRegion[currentRegion];
     if (!entry) return;
+
+    updateExtremes(entry.readings);
 
     var range = capitalsColorRange(entry.readings);
     var sorted = entry.readings.slice().sort(function (a, b) {
