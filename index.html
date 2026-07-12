@@ -177,6 +177,15 @@
     background: var(--panel-alt);
   }
 
+  .station-row.no-data {
+    opacity: 0.55;
+  }
+
+  .station-row.no-data .temp {
+    font-size: 11px;
+    font-style: italic;
+  }
+
   .station-row .marker {
     position: absolute;
     left: 3px;
@@ -440,7 +449,7 @@
     <div id="map"></div>
 
     <aside class="profile">
-      <div class="profile-label">Profil d'altitude — temperature en direct</div>
+      <div class="profile-label">Profil d'altitude</div>
       <div class="profile-scroll">
         <div class="profile-track" id="profileTrack">
           <div class="loading-msg">Chargement des stations...</div>
@@ -510,11 +519,28 @@
   // Utils
   // -------------------------------------------------------------------
 
+  var colorRange = { min: 5, max: 33 }; // valeurs par defaut, recalculees a chaque chargement
+
+  function computeColorRange(readings) {
+    var temps = readings
+      .map(function (r) { return r.temperature; })
+      .filter(function (t) { return t !== null && t !== undefined; });
+    if (temps.length === 0) return;
+    var min = Math.min.apply(null, temps);
+    var max = Math.max.apply(null, temps);
+    // Marge de securite pour eviter un ecart trop resserre si toutes les
+    // stations sont proches en temperature.
+    var pad = Math.max(2, (max - min) * 0.1);
+    colorRange = { min: min - pad, max: max + pad };
+  }
+
   function tempColor(t) {
     // Duotone teal (froid) -> ambre (chaud), pas de rouge.
+    // Echelle recalculee dynamiquement sur les temperatures du jour
+    // (voir computeColorRange) pour que le degrade reste lisible meme
+    // par forte chaleur generalisee.
     if (t === null || t === undefined) return "#5C6570";
-    var min = 5, max = 33;
-    var ratio = Math.max(0, Math.min(1, (t - min) / (max - min)));
+    var ratio = Math.max(0, Math.min(1, (t - colorRange.min) / (colorRange.max - colorRange.min)));
     var cool = [79, 163, 181];   // #4FA3B5
     var warm = [201, 138, 29];   // #C98A1D
     var rgb = cool.map(function (c, i) {
@@ -557,7 +583,8 @@
 
     sorted.forEach(function (r) {
       var row = document.createElement("div");
-      row.className = "station-row";
+      var hasTemp = r.temperature !== null && r.temperature !== undefined;
+      row.className = "station-row" + (hasTemp ? "" : " no-data");
       row.dataset.id = r.station_id;
 
       var marker = document.createElement("div");
@@ -578,9 +605,7 @@
       var temp = document.createElement("div");
       temp.className = "temp";
       temp.style.color = tempColor(r.temperature);
-      temp.textContent = r.temperature !== null && r.temperature !== undefined
-        ? r.temperature.toFixed(1) + "°"
-        : "—";
+      temp.textContent = hasTemp ? r.temperature.toFixed(1) + "°" : "n/d";
       row.appendChild(temp);
 
       row.addEventListener("click", function () { openDetail(r); });
@@ -701,6 +726,7 @@
           setStatus("stale", "aucune donnee");
           return;
         }
+        computeColorRange(data.readings);
         renderProfile(data.readings);
         renderMap(data.readings);
         setStatus("live", "en direct");
