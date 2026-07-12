@@ -985,13 +985,19 @@
   var OWM_API_KEY = "40e0a05ac561c2b71d1f2610cae0012d";
   var tempLayer = null;
   var tempVisible = false;
+  var TEMP_REFRESH_MS = 20 * 60 * 1000; // OpenWeatherMap (offre gratuite, temp_new) : donnees mises a jour toutes les ~10-15 min cote serveur
 
   // Note : l'endpoint "2.0/weather/TA2" avec palette personnalisee
   // renvoie une 401 sur l'offre gratuite (malgre une documentation
   // ambigue a ce sujet) - on reste donc sur temp_new, confirme
   // fonctionnel, avec la palette par defaut d'OpenWeatherMap.
+  //
+  // Le "cache-bust" (parametre _t) force le navigateur a re-telecharger
+  // les tuiles a chaque rafraichissement, sinon il reutiliserait les
+  // memes images en cache indefiniment (l'URL serait identique).
   function buildTempTileUrl() {
-    return "https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=" + OWM_API_KEY;
+    return "https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=" +
+      OWM_API_KEY + "&_t=" + Date.now();
   }
 
   function showTempLayer() {
@@ -1004,6 +1010,14 @@
   function hideTempLayer() {
     if (tempLayer) map.removeLayer(tempLayer);
   }
+
+  function refreshTempLayer() {
+    if (tempVisible && tempLayer) {
+      tempLayer.setUrl(buildTempTileUrl());
+    }
+  }
+
+  setInterval(refreshTempLayer, TEMP_REFRESH_MS);
 
   els.tempToggle.addEventListener("click", function () {
     tempVisible = !tempVisible;
