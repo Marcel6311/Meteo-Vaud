@@ -786,6 +786,22 @@
       </div>
       <button class="detail-close" id="capitalsClose">✕</button>
     </div>
+    <div class="extremes-row" id="extremesRow">
+      <div class="extreme-card hot">
+        <span class="extreme-icon">🔥</span>
+        <div>
+          <div class="extreme-label">Record mondial · plus chaud</div>
+          <div class="extreme-value" id="hotValue">calcul en cours...</div>
+        </div>
+      </div>
+      <div class="extreme-card cold">
+        <span class="extreme-icon">❄️</span>
+        <div>
+          <div class="extreme-label">Record mondial · plus froid</div>
+          <div class="extreme-value" id="coldValue">calcul en cours...</div>
+        </div>
+      </div>
+    </div>
     <div class="region-tabs" id="regionTabs">
       <button data-region="europe" class="active">Europe</button>
       <button data-region="north_america">Amerique du Nord</button>
@@ -793,22 +809,6 @@
       <button data-region="africa">Afrique</button>
       <button data-region="asia">Asie</button>
       <button data-region="oceania">Oceanie</button>
-    </div>
-    <div class="extremes-row" id="extremesRow">
-      <div class="extreme-card hot">
-        <span class="extreme-icon">🔥</span>
-        <div>
-          <div class="extreme-label">Plus chaud</div>
-          <div class="extreme-value" id="hotValue">—</div>
-        </div>
-      </div>
-      <div class="extreme-card cold">
-        <span class="extreme-icon">❄️</span>
-        <div>
-          <div class="extreme-label">Plus froid</div>
-          <div class="extreme-value" id="coldValue">—</div>
-        </div>
-      </div>
     </div>
     <div class="capitals-table-wrap">
       <table class="capitals-table">
@@ -1298,8 +1298,17 @@
     return "rgb(" + rgb.join(",") + ")";
   }
 
-  function updateExtremes(readings) {
-    var withTemp = readings.filter(function (c) {
+  var ALL_REGIONS = ["europe", "north_america", "south_america", "africa", "asia", "oceania"];
+  var globalExtremesLoading = false;
+
+  function updateGlobalExtremes() {
+    var all = [];
+    ALL_REGIONS.forEach(function (region) {
+      var entry = capitalsCacheByRegion[region];
+      if (entry) all = all.concat(entry.readings);
+    });
+
+    var withTemp = all.filter(function (c) {
       return c.temperature !== null && c.temperature !== undefined;
     });
 
@@ -1316,11 +1325,26 @@
     els.coldValue.textContent = coldest.temperature.toFixed(1) + "°C — " + coldest.capital + ", " + coldest.country;
   }
 
+  function loadAllRegionsForGlobalExtremes() {
+    if (globalExtremesLoading) return;
+    globalExtremesLoading = true;
+    els.hotValue.textContent = "calcul en cours...";
+    els.coldValue.textContent = "calcul en cours...";
+
+    var promises = ALL_REGIONS.map(function (region) {
+      if (capitalsCacheByRegion[region]) return Promise.resolve();
+      return loadRegion(region);
+    });
+
+    Promise.all(promises).then(function () {
+      updateGlobalExtremes();
+      globalExtremesLoading = false;
+    });
+  }
+
   function renderCapitalsTable() {
     var entry = capitalsCacheByRegion[currentRegion];
     if (!entry) return;
-
-    updateExtremes(entry.readings);
 
     var range = capitalsColorRange(entry.readings);
     var sorted = entry.readings.slice().sort(function (a, b) {
@@ -1381,8 +1405,10 @@
   }
 
   function loadRegion(region) {
-    els.capitalsBody.innerHTML = '<tr><td colspan="5" class="loading-msg">Chargement...</td></tr>';
-    fetch(API_BASE + "/capitals/current?region=" + region)
+    if (currentRegion === region) {
+      els.capitalsBody.innerHTML = '<tr><td colspan="5" class="loading-msg">Chargement...</td></tr>';
+    }
+    return fetch(API_BASE + "/capitals/current?region=" + region)
       .then(function (res) {
         if (!res.ok) throw new Error("HTTP " + res.status);
         return res.json();
@@ -1434,6 +1460,7 @@
   els.capitalsToggle.addEventListener("click", function () {
     els.capitalsOverlay.classList.add("open");
     if (!capitalsCacheByRegion[currentRegion]) loadRegion(currentRegion);
+    loadAllRegionsForGlobalExtremes();
   });
 
   els.capitalsClose.addEventListener("click", function () {
