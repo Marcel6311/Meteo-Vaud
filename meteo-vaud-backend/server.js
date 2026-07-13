@@ -206,6 +206,13 @@ app.get("/stations/compare", async (req, res) => {
         swissmetnet_temperature: swiss.temperature,
         azuremaps_temperature: azure ? azure.temperature : null,
         azuremaps_description: azure ? azure.description : null,
+        azuremaps_ressenti: azure ? azure.ressenti : null,
+        azuremaps_point_de_rosee: azure ? azure.point_de_rosee : null,
+        azuremaps_indice_uv: azure ? azure.indice_uv : null,
+        azuremaps_couverture_nuageuse: azure ? azure.couverture_nuageuse : null,
+        azuremaps_visibilite: azure ? azure.visibilite : null,
+        azuremaps_pression: azure ? azure.pression : null,
+        azuremaps_tendance_pression: azure ? azure.tendance_pression : null,
         ecart: diff
       };
     });
