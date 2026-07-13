@@ -189,6 +189,11 @@
     border-color: var(--cool);
   }
 
+  .rain-controls button#coverageToggle.active {
+    background: rgba(79, 163, 181, 0.25);
+    border-color: var(--cool);
+  }
+
   .rain-controls #rainTimestamp {
     font-family: var(--font-mono);
     font-size: 11px;
@@ -767,6 +772,7 @@
         <button id="rainPlay">▶</button>
         <button id="rainNext">⏭</button>
         <span id="rainTimestamp">—</span>
+        <button id="coverageToggle" title="Zones couvertes par le radar">🛰</button>
       </div>
     </div>
 
@@ -922,6 +928,7 @@
     rainPlay: document.getElementById("rainPlay"),
     rainNext: document.getElementById("rainNext"),
     rainTimestamp: document.getElementById("rainTimestamp"),
+    coverageToggle: document.getElementById("coverageToggle"),
     capitalsToggle: document.getElementById("capitalsToggle"),
     capitalsOverlay: document.getElementById("capitalsOverlay"),
     capitalsClose: document.getElementById("capitalsClose"),
@@ -1175,6 +1182,52 @@
     return host + frame.path + "/" + size + "/{z}/{x}/{y}/" + colorScheme + "/" + smoothSnow + ".png";
   }
 
+  // Masque de couverture radar : memes tuiles que le radar, mais avec
+  // color=0 et options=0_0 - transparent la ou le radar couvre, noir la
+  // ou il n'y a aucune donnee. Utile pour savoir si "pas de pluie" veut
+  // dire "ciel clair" ou juste "aucun radar disponible ici".
+  function buildCoverageTileUrl(host, frame) {
+    var size = 256;
+    return host + frame.path + "/" + size + "/{z}/{x}/{y}/0/0_0.png";
+  }
+
+  var coverageLayer = null;
+  var coverageVisible = false;
+
+  function updateCoverageLayer() {
+    if (!coverageVisible || !rainFrames) return;
+    var frames = getPastFrames();
+    if (frames.length === 0) return;
+    var frame = frames[rainFrameIndex] || frames[frames.length - 1];
+    var url = buildCoverageTileUrl(rainFrames.host, frame);
+
+    if (coverageLayer) {
+      coverageLayer.setUrl(url);
+    } else {
+      coverageLayer = L.tileLayer(url, {
+        opacity: 0.5,
+        zIndex: 490, // sous le radar pluie (500) mais au-dessus du fond de carte
+        maxNativeZoom: 7,
+        minZoom: 0
+      });
+      map.addLayer(coverageLayer);
+    }
+  }
+
+  function hideCoverageLayer() {
+    if (coverageLayer) map.removeLayer(coverageLayer);
+  }
+
+  els.coverageToggle.addEventListener("click", function () {
+    coverageVisible = !coverageVisible;
+    els.coverageToggle.classList.toggle("active", coverageVisible);
+    if (coverageVisible) {
+      updateCoverageLayer();
+    } else {
+      hideCoverageLayer();
+    }
+  });
+
   function formatFrameTime(unixSeconds) {
     var d = new Date(unixSeconds * 1000);
     var hh = String(d.getHours()).padStart(2, "0");
@@ -1208,6 +1261,7 @@
 
     var isLatest = rainFrameIndex === frames.length - 1;
     els.rainTimestamp.textContent = formatFrameTime(frame.time) + (isLatest ? " (direct)" : "");
+    updateCoverageLayer();
   }
 
   function showRainLayer() {
@@ -1221,6 +1275,7 @@
   function hideRainLayer() {
     stopRainAnimation();
     if (rainLayer) map.removeLayer(rainLayer);
+    hideCoverageLayer();
     els.rainControls.classList.remove("visible");
   }
 
