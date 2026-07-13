@@ -486,6 +486,22 @@
     box-shadow: 0 0 0 1px var(--hairline);
   }
 
+  .spotlight-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #FFFFFF;
+    border: 3px solid var(--amber);
+    box-shadow: 0 0 0 4px rgba(201, 138, 29, 0.25);
+    animation: spotlight-pulse 1.6s ease-out infinite;
+  }
+
+  @keyframes spotlight-pulse {
+    0% { box-shadow: 0 0 0 4px rgba(201, 138, 29, 0.35); }
+    70% { box-shadow: 0 0 0 14px rgba(201, 138, 29, 0); }
+    100% { box-shadow: 0 0 0 4px rgba(201, 138, 29, 0); }
+  }
+
   /* ---------- Capitales (overlay + tableau) ---------- */
 
   .capitals-overlay {
@@ -961,6 +977,32 @@
   }).addTo(map);
 
   var markers = {}; // station_id -> L.circleMarker
+  var spotlightMarker = null;
+
+  /**
+   * Recentre la carte principale sur un lieu et y place un marqueur
+   * distinctif temporaire (utilise par les tableaux capitales/comparaison
+   * pour "localiser cette ville sur la carte" en un clic).
+   */
+  function showSpotlight(lat, lon, label) {
+    if (lat === null || lat === undefined || lon === null || lon === undefined) return;
+
+    if (spotlightMarker) map.removeLayer(spotlightMarker);
+
+    spotlightMarker = L.marker([lat, lon], {
+      icon: L.divIcon({
+        className: "spotlight-icon",
+        html: '<div class="spotlight-dot"></div>',
+        iconSize: [22, 22],
+        iconAnchor: [11, 11]
+      }),
+      zIndexOffset: 1000
+    }).addTo(map);
+
+    if (label) spotlightMarker.bindPopup(label).openPopup();
+
+    map.setView([lat, lon], 9);
+  }
 
   // -------------------------------------------------------------------
   // Utils
@@ -1526,6 +1568,12 @@
       tr.appendChild(tdTemp);
       tr.appendChild(tdHum);
       tr.appendChild(tdDesc);
+      tr.style.cursor = "pointer";
+      tr.title = "Cliquer pour localiser sur la carte";
+      tr.addEventListener("click", function () {
+        showSpotlight(c.lat, c.lon, c.capital + ", " + c.country);
+        els.capitalsOverlay.classList.remove("open");
+      });
       els.capitalsBody.appendChild(tr);
     });
 
@@ -1657,6 +1705,12 @@
       tr.appendChild(tdAzure);
       tr.appendChild(tdEcart);
       tr.appendChild(tdDesc);
+      tr.style.cursor = "pointer";
+      tr.title = "Cliquer pour localiser sur la carte";
+      tr.addEventListener("click", function () {
+        showSpotlight(c.lat, c.lon, c.station_name);
+        els.compareOverlay.classList.remove("open");
+      });
       els.compareBody.appendChild(tr);
     });
 
