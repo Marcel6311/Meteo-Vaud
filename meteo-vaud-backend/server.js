@@ -201,6 +201,8 @@ app.get("/stations/compare", async (req, res) => {
       return {
         station_id: swiss.station_id,
         station_name: swiss.station_name,
+        lat: swiss.lat,
+        lon: swiss.lon,
         swissmetnet_temperature: swiss.temperature,
         azuremaps_temperature: azure ? azure.temperature : null,
         azuremaps_description: azure ? azure.description : null,
