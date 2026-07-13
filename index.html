@@ -562,6 +562,42 @@
     margin-top: 4px;
   }
 
+  .search-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 22px;
+    border-bottom: 1px solid var(--hairline);
+    background: var(--panel-alt);
+  }
+
+  .search-row input {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 13px;
+    padding: 7px 12px;
+    border-radius: 6px;
+    outline: none;
+  }
+
+  .search-row input:focus {
+    border-color: var(--amber);
+  }
+
+  .search-row input::placeholder {
+    color: var(--text-faint);
+  }
+
+  .search-row #searchCount {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-faint);
+    white-space: nowrap;
+  }
+
   .region-tabs {
     display: flex;
     flex-wrap: wrap;
@@ -858,6 +894,10 @@
         </div>
       </div>
     </div>
+    <div class="search-row">
+      <input type="text" id="citySearch" placeholder="Rechercher une ville dans toutes les regions..." autocomplete="off">
+      <span id="searchCount"></span>
+    </div>
     <div class="region-tabs" id="regionTabs">
       <button data-region="europe" class="active">Europe</button>
       <button data-region="north_america">Amerique du Nord</button>
@@ -958,6 +998,8 @@
     capitalsClose: document.getElementById("capitalsClose"),
     capitalsSub: document.getElementById("capitalsSub"),
     capitalsBody: document.getElementById("capitalsBody"),
+    citySearch: document.getElementById("citySearch"),
+    searchCount: document.getElementById("searchCount"),
     regionTabs: document.getElementById("regionTabs"),
     historicalRecords: document.getElementById("historicalRecords"),
     hotValue: document.getElementById("hotValue"),
@@ -1546,6 +1588,60 @@
     });
   }
 
+  /**
+   * Construit une ligne <tr> pour une capitale/ville donnee. Reutilisee
+   * par la vue par region et par la recherche globale.
+   */
+  function buildCapitalRow(c, range) {
+    var tr = document.createElement("tr");
+
+    var tdCountry = document.createElement("td");
+    tdCountry.className = "country";
+    tdCountry.textContent = c.country;
+
+    var tdCapital = document.createElement("td");
+    tdCapital.className = "capital";
+    tdCapital.textContent = c.capital;
+
+    var tdTemp = document.createElement("td");
+    tdTemp.className = "temp";
+    if (c.temperature !== null && c.temperature !== undefined) {
+      tdTemp.textContent = c.temperature.toFixed(1) + "°C";
+      tdTemp.style.color = capitalTempColor(c.temperature, range);
+    } else {
+      tdTemp.textContent = "n/d";
+      tdTemp.style.color = "#5C6570";
+    }
+
+    var tdHum = document.createElement("td");
+    tdHum.className = "country";
+    tdHum.textContent = c.humidite !== null && c.humidite !== undefined ? c.humidite + "%" : "—";
+
+    var tdDesc = document.createElement("td");
+    tdDesc.className = "desc";
+    tdDesc.textContent = c.description || "—";
+
+    tr.appendChild(tdCountry);
+    tr.appendChild(tdCapital);
+    tr.appendChild(tdTemp);
+    tr.appendChild(tdHum);
+    tr.appendChild(tdDesc);
+    tr.style.cursor = "pointer";
+    tr.title = "Cliquer pour localiser sur la carte";
+    tr.addEventListener("click", function () {
+      var details = [
+        "Ressenti " + fmtField(c.ressenti, "°C", 1) + " · Min/Max " + fmtField(c.temp_min, "", 0) + "/" + fmtField(c.temp_max, "°C", 0),
+        "Nuages " + fmtField(c.couverture_nuageuse, "%", 0) + " · Visibilite " + (c.visibilite !== null && c.visibilite !== undefined ? (c.visibilite / 1000).toFixed(1) + " km" : "—"),
+        "Pression " + fmtField(c.pression, "hPa", 0),
+        "Lever " + fmtTime(c.lever_soleil) + " · Coucher " + fmtTime(c.coucher_soleil)
+      ];
+      showSpotlight(c.lat, c.lon, c.capital + ", " + c.country, details);
+      els.capitalsOverlay.classList.remove("open");
+      resetCitySearch();
+    });
+    return tr;
+  }
+
   function renderCapitalsTable() {
     var entry = capitalsCacheByRegion[currentRegion];
     if (!entry) return;
@@ -1563,54 +1659,8 @@
     });
 
     els.capitalsBody.innerHTML = "";
-
     sorted.forEach(function (c) {
-      var tr = document.createElement("tr");
-
-      var tdCountry = document.createElement("td");
-      tdCountry.className = "country";
-      tdCountry.textContent = c.country;
-
-      var tdCapital = document.createElement("td");
-      tdCapital.className = "capital";
-      tdCapital.textContent = c.capital;
-
-      var tdTemp = document.createElement("td");
-      tdTemp.className = "temp";
-      if (c.temperature !== null && c.temperature !== undefined) {
-        tdTemp.textContent = c.temperature.toFixed(1) + "°C";
-        tdTemp.style.color = capitalTempColor(c.temperature, range);
-      } else {
-        tdTemp.textContent = "n/d";
-        tdTemp.style.color = "#5C6570";
-      }
-
-      var tdHum = document.createElement("td");
-      tdHum.className = "country";
-      tdHum.textContent = c.humidite !== null && c.humidite !== undefined ? c.humidite + "%" : "—";
-
-      var tdDesc = document.createElement("td");
-      tdDesc.className = "desc";
-      tdDesc.textContent = c.description || "—";
-
-      tr.appendChild(tdCountry);
-      tr.appendChild(tdCapital);
-      tr.appendChild(tdTemp);
-      tr.appendChild(tdHum);
-      tr.appendChild(tdDesc);
-      tr.style.cursor = "pointer";
-      tr.title = "Cliquer pour localiser sur la carte";
-      tr.addEventListener("click", function () {
-        var details = [
-          "Ressenti " + fmtField(c.ressenti, "°C", 1) + " · Min/Max " + fmtField(c.temp_min, "", 0) + "/" + fmtField(c.temp_max, "°C", 0),
-          "Nuages " + fmtField(c.couverture_nuageuse, "%", 0) + " · Visibilite " + (c.visibilite !== null && c.visibilite !== undefined ? (c.visibilite / 1000).toFixed(1) + " km" : "—"),
-          "Pression " + fmtField(c.pression, "hPa", 0),
-          "Lever " + fmtTime(c.lever_soleil) + " · Coucher " + fmtTime(c.coucher_soleil)
-        ];
-        showSpotlight(c.lat, c.lon, c.capital + ", " + c.country, details);
-        els.capitalsOverlay.classList.remove("open");
-      });
-      els.capitalsBody.appendChild(tr);
+      els.capitalsBody.appendChild(buildCapitalRow(c, range));
     });
 
     document.querySelectorAll(".capitals-table thead th").forEach(function (th) {
@@ -1619,6 +1669,52 @@
 
     els.capitalsSub.textContent = entry.readings.length + " capitales · maj " + timeAgo(entry.updatedAt);
   }
+
+  /**
+   * Recherche globale : parcourt toutes les regions deja chargees en
+   * cache (pas seulement celle affichee) et filtre par nom de ville ou
+   * de pays. Insensible a la casse.
+   */
+  function renderSearchResults(query) {
+    var q = query.trim().toLowerCase();
+    var all = [];
+    ALL_REGIONS.concat(["france"]).forEach(function (region) {
+      var entry = capitalsCacheByRegion[region];
+      if (entry) all = all.concat(entry.readings);
+    });
+
+    var matches = all.filter(function (c) {
+      return (c.capital && c.capital.toLowerCase().indexOf(q) !== -1) ||
+             (c.country && c.country.toLowerCase().indexOf(q) !== -1);
+    });
+
+    var range = capitalsColorRange(matches);
+    els.capitalsBody.innerHTML = "";
+
+    if (matches.length === 0) {
+      els.capitalsBody.innerHTML = '<tr><td colspan="5" class="loading-msg">Aucun resultat pour "' + query + '".</td></tr>';
+    } else {
+      matches.slice(0, 60).forEach(function (c) {
+        els.capitalsBody.appendChild(buildCapitalRow(c, range));
+      });
+    }
+
+    els.searchCount.textContent = matches.length + " resultat" + (matches.length > 1 ? "s" : "");
+    els.capitalsSub.textContent = "Recherche dans toutes les regions chargees";
+  }
+
+  els.citySearch.addEventListener("input", function () {
+    var query = els.citySearch.value;
+    if (query.trim() === "") {
+      els.searchCount.textContent = "";
+      els.regionTabs.style.display = "";
+      renderCapitalsTable();
+    } else {
+      els.regionTabs.style.display = "none";
+      renderSearchResults(query);
+      loadAllRegionsForGlobalExtremes(); // s'assure que les regions pas encore visitees sont aussi chargees pour la recherche
+    }
+  });
 
   function loadRegion(region) {
     if (currentRegion === region) {
@@ -1680,8 +1776,15 @@
     loadAllRegionsForGlobalExtremes();
   });
 
+  function resetCitySearch() {
+    els.citySearch.value = "";
+    els.searchCount.textContent = "";
+    els.regionTabs.style.display = "";
+  }
+
   els.capitalsClose.addEventListener("click", function () {
     els.capitalsOverlay.classList.remove("open");
+    resetCitySearch();
   });
 
   els.capitalsOverlay.addEventListener("click", function (e) {
