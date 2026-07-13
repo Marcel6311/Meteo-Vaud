@@ -547,6 +547,12 @@
     align-items: flex-start;
     padding: 18px 22px;
     border-bottom: 1px solid var(--hairline);
+    cursor: move;
+    user-select: none;
+  }
+
+  .capitals-panel.dragging {
+    transition: none;
   }
 
   .capitals-header h2 {
@@ -1028,6 +1034,70 @@
 
   var markers = {}; // station_id -> L.circleMarker
   var spotlightMarker = null;
+
+  // -------------------------------------------------------------------
+  // Panneaux deplacables (capitales, comparaison) - glisser depuis l'en-tete
+  // -------------------------------------------------------------------
+
+  function makeDraggable(panel, handle) {
+    var dragging = false;
+    var offsetX = 0;
+    var offsetY = 0;
+
+    function start(clientX, clientY) {
+      var rect = panel.getBoundingClientRect();
+      // Bascule d'un positionnement centre par flexbox a un positionnement
+      // fixe explicite, pour que le panneau reste ou l'utilisateur le lache.
+      panel.style.position = "fixed";
+      panel.style.margin = "0";
+      panel.style.left = rect.left + "px";
+      panel.style.top = rect.top + "px";
+      offsetX = clientX - rect.left;
+      offsetY = clientY - rect.top;
+      dragging = true;
+      panel.classList.add("dragging");
+    }
+
+    function move(clientX, clientY) {
+      if (!dragging) return;
+      var maxLeft = window.innerWidth - panel.offsetWidth - 8;
+      var maxTop = window.innerHeight - panel.offsetHeight - 8;
+      var left = Math.min(Math.max(8, clientX - offsetX), Math.max(8, maxLeft));
+      var top = Math.min(Math.max(8, clientY - offsetY), Math.max(8, maxTop));
+      panel.style.left = left + "px";
+      panel.style.top = top + "px";
+    }
+
+    function end() {
+      dragging = false;
+      panel.classList.remove("dragging");
+    }
+
+    handle.addEventListener("mousedown", function (e) {
+      if (e.target.closest("button")) return; // ne pas capturer le clic sur la croix de fermeture
+      e.preventDefault();
+      start(e.clientX, e.clientY);
+    });
+    window.addEventListener("mousemove", function (e) { move(e.clientX, e.clientY); });
+    window.addEventListener("mouseup", end);
+
+    handle.addEventListener("touchstart", function (e) {
+      if (e.target.closest("button")) return;
+      var t = e.touches[0];
+      start(t.clientX, t.clientY);
+    }, { passive: true });
+    window.addEventListener("touchmove", function (e) {
+      if (!dragging) return;
+      var t = e.touches[0];
+      move(t.clientX, t.clientY);
+    }, { passive: true });
+    window.addEventListener("touchend", end);
+  }
+
+  document.querySelectorAll(".capitals-panel").forEach(function (panel) {
+    var handle = panel.querySelector(".capitals-header");
+    if (handle) makeDraggable(panel, handle);
+  });
 
   /**
    * Recentre la carte principale sur un lieu et y place un marqueur
