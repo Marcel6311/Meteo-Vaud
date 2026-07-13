@@ -496,6 +496,14 @@
     animation: spotlight-pulse 1.6s ease-out infinite;
   }
 
+  .spotlight-details {
+    margin-top: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+
   @keyframes spotlight-pulse {
     0% { box-shadow: 0 0 0 4px rgba(201, 138, 29, 0.35); }
     70% { box-shadow: 0 0 0 14px rgba(201, 138, 29, 0); }
@@ -983,8 +991,11 @@
    * Recentre la carte principale sur un lieu et y place un marqueur
    * distinctif temporaire (utilise par les tableaux capitales/comparaison
    * pour "localiser cette ville sur la carte" en un clic).
+   * @param {string} label - titre de la popup
+   * @param {Array<string>} [detailLines] - lignes de detail additionnelles
+   *   (UV, nuages, visibilite, pression...) affichees sous le titre.
    */
-  function showSpotlight(lat, lon, label) {
+  function showSpotlight(lat, lon, label, detailLines) {
     if (lat === null || lat === undefined || lon === null || lon === undefined) return;
 
     if (spotlightMarker) map.removeLayer(spotlightMarker);
@@ -999,9 +1010,28 @@
       zIndexOffset: 1000
     }).addTo(map);
 
-    if (label) spotlightMarker.bindPopup(label).openPopup();
+    var popupHtml = label ? "<b>" + label + "</b>" : "";
+    if (detailLines && detailLines.length > 0) {
+      popupHtml += '<div class="spotlight-details">' + detailLines.join("<br>") + "</div>";
+    }
+    if (popupHtml) spotlightMarker.bindPopup(popupHtml).openPopup();
 
     map.setView([lat, lon], 9);
+  }
+
+  /**
+   * Formatte une valeur numerique avec unite, ou "—" si absente.
+   */
+  function fmtField(value, unit, decimals) {
+    if (value === null || value === undefined) return "—";
+    var d = decimals === undefined ? 0 : decimals;
+    return value.toFixed(d) + (unit ? " " + unit : "");
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
   }
 
   // -------------------------------------------------------------------
@@ -1571,7 +1601,13 @@
       tr.style.cursor = "pointer";
       tr.title = "Cliquer pour localiser sur la carte";
       tr.addEventListener("click", function () {
-        showSpotlight(c.lat, c.lon, c.capital + ", " + c.country);
+        var details = [
+          "Ressenti " + fmtField(c.ressenti, "°C", 1) + " · Min/Max " + fmtField(c.temp_min, "", 0) + "/" + fmtField(c.temp_max, "°C", 0),
+          "Nuages " + fmtField(c.couverture_nuageuse, "%", 0) + " · Visibilite " + (c.visibilite !== null && c.visibilite !== undefined ? (c.visibilite / 1000).toFixed(1) + " km" : "—"),
+          "Pression " + fmtField(c.pression, "hPa", 0),
+          "Lever " + fmtTime(c.lever_soleil) + " · Coucher " + fmtTime(c.coucher_soleil)
+        ];
+        showSpotlight(c.lat, c.lon, c.capital + ", " + c.country, details);
         els.capitalsOverlay.classList.remove("open");
       });
       els.capitalsBody.appendChild(tr);
@@ -1708,7 +1744,12 @@
       tr.style.cursor = "pointer";
       tr.title = "Cliquer pour localiser sur la carte";
       tr.addEventListener("click", function () {
-        showSpotlight(c.lat, c.lon, c.station_name);
+        var details = [
+          "Ressenti (Azure) " + fmtField(c.azuremaps_ressenti, "°C", 1) + " · Pt. rosee " + fmtField(c.azuremaps_point_de_rosee, "°C", 1),
+          "UV " + fmtField(c.azuremaps_indice_uv, "", 0) + " · Nuages " + fmtField(c.azuremaps_couverture_nuageuse, "%", 0),
+          "Visibilite " + fmtField(c.azuremaps_visibilite, "km", 1) + " · Pression " + fmtField(c.azuremaps_pression, "hPa", 0) + (c.azuremaps_tendance_pression ? " (" + c.azuremaps_tendance_pression + ")" : "")
+        ];
+        showSpotlight(c.lat, c.lon, c.station_name, details);
         els.compareOverlay.classList.remove("open");
       });
       els.compareBody.appendChild(tr);
