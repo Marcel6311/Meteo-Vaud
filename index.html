@@ -1218,15 +1218,17 @@
     if (coverageLayer) map.removeLayer(coverageLayer);
   }
 
-  els.coverageToggle.addEventListener("click", function () {
-    coverageVisible = !coverageVisible;
-    els.coverageToggle.classList.toggle("active", coverageVisible);
-    if (coverageVisible) {
-      updateCoverageLayer();
-    } else {
-      hideCoverageLayer();
-    }
-  });
+  if (els.coverageToggle) {
+    els.coverageToggle.addEventListener("click", function () {
+      coverageVisible = !coverageVisible;
+      els.coverageToggle.classList.toggle("active", coverageVisible);
+      if (coverageVisible) {
+        updateCoverageLayer();
+      } else {
+        hideCoverageLayer();
+      }
+    });
+  }
 
   function formatFrameTime(unixSeconds) {
     var d = new Date(unixSeconds * 1000);
