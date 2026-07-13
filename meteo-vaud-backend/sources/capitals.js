@@ -29,36 +29,54 @@ function buildUrl(capital) {
  * echouer tout le lot (une capitale indisponible ne doit pas bloquer les 44 autres).
  */
 async function fetchOneCapital(capital) {
+  const base = {
+    country: capital.country,
+    capital: capital.capital,
+    lat: capital.lat,
+    lon: capital.lon
+  };
+  const empty = {
+    ...base,
+    temperature: null,
+    ressenti: null,
+    temp_min: null,
+    temp_max: null,
+    humidite: null,
+    pression: null,
+    vent_vitesse: null,
+    couverture_nuageuse: null,
+    visibilite: null,
+    lever_soleil: null,
+    coucher_soleil: null,
+    description: null,
+    icone: null,
+    erreur: null
+  };
+
   try {
     const res = await fetch(buildUrl(capital));
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
 
     return {
-      country: capital.country,
-      capital: capital.capital,
-      lat: capital.lat,
-      lon: capital.lon,
+      ...base,
       temperature: data.main ? data.main.temp : null,
+      ressenti: data.main ? data.main.feels_like : null,
+      temp_min: data.main ? data.main.temp_min : null,
+      temp_max: data.main ? data.main.temp_max : null,
       humidite: data.main ? data.main.humidity : null,
+      pression: data.main ? data.main.pressure : null,
       vent_vitesse: data.wind ? Math.round(data.wind.speed * 3.6) : null, // m/s -> km/h
+      couverture_nuageuse: data.clouds ? data.clouds.all : null,
+      visibilite: data.visibility !== undefined ? data.visibility : null, // metres
+      lever_soleil: data.sys && data.sys.sunrise ? new Date(data.sys.sunrise * 1000).toISOString() : null,
+      coucher_soleil: data.sys && data.sys.sunset ? new Date(data.sys.sunset * 1000).toISOString() : null,
       description: data.weather && data.weather[0] ? data.weather[0].description : null,
       icone: data.weather && data.weather[0] ? data.weather[0].icon : null,
       erreur: null
     };
   } catch (err) {
-    return {
-      country: capital.country,
-      capital: capital.capital,
-      lat: capital.lat,
-      lon: capital.lon,
-      temperature: null,
-      humidite: null,
-      vent_vitesse: null,
-      description: null,
-      icone: null,
-      erreur: err.message
-    };
+    return { ...empty, erreur: err.message };
   }
 }
 
