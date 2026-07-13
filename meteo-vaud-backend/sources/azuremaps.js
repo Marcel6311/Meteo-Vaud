@@ -32,16 +32,24 @@ function buildUrl(lat, lon) {
  * de faire planter tout le lot.
  */
 async function fetchOnePoint(station) {
+  const empty = {
+    station_id: station.code,
+    station_name: station.name,
+    temperature: null,
+    ressenti: null,
+    humidite: null,
+    description: null,
+    point_de_rosee: null,
+    indice_uv: null,
+    couverture_nuageuse: null,
+    visibilite: null,
+    pression: null,
+    tendance_pression: null,
+    erreur: null
+  };
+
   if (!AZURE_MAPS_KEY) {
-    return {
-      station_id: station.code,
-      station_name: station.name,
-      temperature: null,
-      ressenti: null,
-      humidite: null,
-      description: null,
-      erreur: "AZURE_MAPS_KEY non definie (variable d'environnement Render manquante)"
-    };
+    return { ...empty, erreur: "AZURE_MAPS_KEY non definie (variable d'environnement Render manquante)" };
   }
 
   try {
@@ -59,18 +67,16 @@ async function fetchOnePoint(station) {
       ressenti: result.realFeelTemperature ? result.realFeelTemperature.value : null,
       humidite: result.relativeHumidity !== undefined ? result.relativeHumidity : null,
       description: result.phrase || null,
+      point_de_rosee: result.dewPoint ? result.dewPoint.value : null,
+      indice_uv: result.uvIndex !== undefined ? result.uvIndex : null,
+      couverture_nuageuse: result.cloudCover !== undefined ? result.cloudCover : null,
+      visibilite: result.visibility ? result.visibility.value : null,
+      pression: result.pressure ? result.pressure.value : null,
+      tendance_pression: result.pressureTendency ? result.pressureTendency.localizedDescription : null,
       erreur: null
     };
   } catch (err) {
-    return {
-      station_id: station.code,
-      station_name: station.name,
-      temperature: null,
-      ressenti: null,
-      humidite: null,
-      description: null,
-      erreur: err.message
-    };
+    return { ...empty, erreur: err.message };
   }
 }
 
