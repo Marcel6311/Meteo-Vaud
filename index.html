@@ -1201,8 +1201,11 @@
     var frame = frames[rainFrameIndex] || frames[frames.length - 1];
     var url = buildCoverageTileUrl(rainFrames.host, frame);
 
-    if (coverageLayer) {
+    if (coverageLayer && map.hasLayer(coverageLayer)) {
       coverageLayer.setUrl(url);
+    } else if (coverageLayer) {
+      coverageLayer.setUrl(url);
+      map.addLayer(coverageLayer); // le calque existe mais a ete retire au dernier hideCoverageLayer()
     } else {
       coverageLayer = L.tileLayer(url, {
         opacity: 0.5,
@@ -1270,6 +1273,9 @@
     if (!rainFrames) return; // pas encore charge, rappele apres fetch (voir fetchRainFrames)
     var frames = getPastFrames();
     if (frames.length === 0) return;
+    if (rainLayer && !map.hasLayer(rainLayer)) {
+      map.addLayer(rainLayer); // le calque existe mais a ete retire au dernier hideRainLayer()
+    }
     showRainFrameAt(frames.length - 1); // demarre sur l'image la plus recente
     els.rainControls.classList.add("visible");
   }
