@@ -1850,6 +1850,7 @@
     els.citySearch.value = "";
     els.searchCount.textContent = "";
     els.regionTabs.style.display = "";
+    renderCapitalsTable(); // redessine la vue par region, sinon le tableau reste bloque sur les derniers resultats de recherche
   }
 
   els.capitalsClose.addEventListener("click", function () {
