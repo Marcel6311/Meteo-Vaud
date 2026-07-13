@@ -1618,7 +1618,7 @@
 
   els.compareToggle.addEventListener("click", function () {
     els.compareOverlay.classList.add("open");
-    if (!compareLoaded) loadCompare();
+    loadCompare(); // toujours rafraichi a l'ouverture, pas de cache fige
   });
 
   els.compareClose.addEventListener("click", function () {
