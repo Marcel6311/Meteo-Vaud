@@ -213,6 +213,44 @@
     display: grid;
     grid-template-columns: 1fr 300px;
     min-height: 0;
+    position: relative;
+  }
+
+  main.profile-hidden {
+    grid-template-columns: 1fr 0;
+  }
+
+  main.profile-hidden .profile {
+    display: none;
+  }
+
+  .profile-show-tab {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 60;
+    background: var(--panel-alt);
+    border: 1px solid var(--hairline);
+    border-right: none;
+    color: var(--text-dim);
+    width: 28px;
+    height: 44px;
+    border-radius: 6px 0 0 6px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+
+  .profile-show-tab:hover {
+    color: var(--amber);
+    border-color: var(--amber);
+  }
+
+  main.profile-hidden .profile-show-tab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   #map {
@@ -238,6 +276,29 @@
     text-transform: uppercase;
     color: var(--text-faint);
     border-bottom: 1px solid var(--hairline);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  #profileToggle {
+    background: transparent;
+    border: 1px solid var(--hairline);
+    color: var(--text-faint);
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    font-size: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  #profileToggle:hover {
+    color: var(--amber);
+    border-color: var(--amber);
   }
 
   .profile-scroll {
@@ -814,6 +875,22 @@
       grid-template-columns: 1fr;
       grid-template-rows: 200px 1fr;
     }
+    main.profile-hidden {
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr 0;
+    }
+    .profile-show-tab {
+      right: auto;
+      left: 50%;
+      top: auto;
+      bottom: 0;
+      transform: translateX(-50%);
+      width: 44px;
+      height: 22px;
+      border-radius: 6px 6px 0 0;
+      border: 1px solid var(--hairline);
+      border-bottom: none;
+    }
     .profile {
       border-left: none;
       border-top: 1px solid var(--hairline);
@@ -890,14 +967,18 @@
       </div>
     </div>
 
-    <aside class="profile">
-      <div class="profile-label">Profil d'altitude</div>
+    <aside class="profile" id="profileAside">
+      <div class="profile-label">
+        <span>Profil d'altitude</span>
+        <button id="profileToggle" title="Masquer/afficher le profil">✕</button>
+      </div>
       <div class="profile-scroll">
         <div class="profile-track" id="profileTrack">
           <div class="loading-msg">Chargement des stations...</div>
         </div>
       </div>
     </aside>
+    <button id="profileShow" class="profile-show-tab" title="Afficher le profil d'altitude">☰</button>
   </main>
 
   <footer>
@@ -1036,6 +1117,9 @@
     updatedAt: document.getElementById("updatedAt"),
     manualRefresh: document.getElementById("manualRefresh"),
     profileTrack: document.getElementById("profileTrack"),
+    profileAside: document.getElementById("profileAside"),
+    profileToggle: document.getElementById("profileToggle"),
+    profileShow: document.getElementById("profileShow"),
     detail: document.getElementById("detail"),
     dTitle: document.getElementById("dTitle"),
     dSub: document.getElementById("dSub"),
@@ -1467,6 +1551,26 @@
         hideCoverageLayer();
       }
     });
+  }
+
+  // -------------------------------------------------------------------
+  // Masquer/afficher le profil d'altitude (plus de place pour la carte)
+  // -------------------------------------------------------------------
+
+  var mainEl = document.querySelector("main");
+
+  function toggleProfile(hidden) {
+    mainEl.classList.toggle("profile-hidden", hidden);
+    // La carte Leaflet doit recalculer sa taille apres le changement de largeur,
+    // sinon elle reste coupee/mal centree tant qu'on ne zoome pas manuellement.
+    setTimeout(function () { map.invalidateSize(); }, 260);
+  }
+
+  if (els.profileToggle) {
+    els.profileToggle.addEventListener("click", function () { toggleProfile(true); });
+  }
+  if (els.profileShow) {
+    els.profileShow.addEventListener("click", function () { toggleProfile(false); });
   }
 
   function formatFrameTime(unixSeconds) {
