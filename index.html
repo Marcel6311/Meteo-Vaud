@@ -2015,7 +2015,7 @@
     setStatus("", "chargement...");
     els.profileTrack.innerHTML = '<div class="loading-msg">Reveil du serveur en cours (peut prendre jusqu\'a 50s sur l\'offre gratuite)...</div>';
 
-    fetch(API_BASE + "/stations/current?scope=" + currentScope)
+    fetch(API_BASE + "/stations/current?scope=" + currentScope + "&_t=" + Date.now(), { cache: "no-store" })
       .then(function (res) {
         if (!res.ok) throw new Error("HTTP " + res.status);
         return res.json();
