@@ -224,35 +224,6 @@
     display: none;
   }
 
-  .profile-show-tab {
-    display: none;
-    position: absolute;
-    right: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 60;
-    background: var(--panel-alt);
-    border: 1px solid var(--hairline);
-    border-right: none;
-    color: var(--text-dim);
-    width: 28px;
-    height: 44px;
-    border-radius: 6px 0 0 6px;
-    cursor: pointer;
-    font-size: 14px;
-  }
-
-  .profile-show-tab:hover {
-    color: var(--amber);
-    border-color: var(--amber);
-  }
-
-  main.profile-hidden .profile-show-tab {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
   #map {
     background: var(--panel);
     min-height: 0;
@@ -879,18 +850,6 @@
       grid-template-columns: 1fr;
       grid-template-rows: 1fr 0;
     }
-    .profile-show-tab {
-      right: auto;
-      left: 50%;
-      top: auto;
-      bottom: 0;
-      transform: translateX(-50%);
-      width: 44px;
-      height: 22px;
-      border-radius: 6px 6px 0 0;
-      border: 1px solid var(--hairline);
-      border-bottom: none;
-    }
     .profile {
       border-left: none;
       border-top: 1px solid var(--hairline);
@@ -949,6 +908,7 @@
       <button class="rain-toggle" id="tempToggle">🌡 TEMPERATURE</button>
       <button class="rain-toggle" id="capitalsToggle">🌍 CAPITALES</button>
       <button class="rain-toggle" id="compareToggle">⚖️ COMPARAISON</button>
+      <button class="rain-toggle" id="profileToggleHeader">📊 PROFIL</button>
       <div class="status" id="status">
         <span class="dot"></span>
         <span id="statusText">connexion...</span>
@@ -978,7 +938,6 @@
         </div>
       </div>
     </aside>
-    <button id="profileShow" class="profile-show-tab" title="Afficher le profil d'altitude">☰</button>
   </main>
 
   <footer>
@@ -1119,7 +1078,7 @@
     profileTrack: document.getElementById("profileTrack"),
     profileAside: document.getElementById("profileAside"),
     profileToggle: document.getElementById("profileToggle"),
-    profileShow: document.getElementById("profileShow"),
+    profileToggleHeader: document.getElementById("profileToggleHeader"),
     detail: document.getElementById("detail"),
     dTitle: document.getElementById("dTitle"),
     dSub: document.getElementById("dSub"),
@@ -1558,19 +1517,23 @@
   // -------------------------------------------------------------------
 
   var mainEl = document.querySelector("main");
+  var profileHidden = false;
 
-  function toggleProfile(hidden) {
-    mainEl.classList.toggle("profile-hidden", hidden);
+  function toggleProfile() {
+    profileHidden = !profileHidden;
+    mainEl.classList.toggle("profile-hidden", profileHidden);
+    els.profileToggleHeader.classList.toggle("active", profileHidden);
+    els.profileToggleHeader.textContent = profileHidden ? "📊 AFFICHER PROFIL" : "📊 PROFIL";
     // La carte Leaflet doit recalculer sa taille apres le changement de largeur,
     // sinon elle reste coupee/mal centree tant qu'on ne zoome pas manuellement.
     setTimeout(function () { map.invalidateSize(); }, 260);
   }
 
-  if (els.profileToggle) {
-    els.profileToggle.addEventListener("click", function () { toggleProfile(true); });
+  if (els.profileToggleHeader) {
+    els.profileToggleHeader.addEventListener("click", toggleProfile);
   }
-  if (els.profileShow) {
-    els.profileShow.addEventListener("click", function () { toggleProfile(false); });
+  if (els.profileToggle) {
+    els.profileToggle.addEventListener("click", toggleProfile);
   }
 
   function formatFrameTime(unixSeconds) {
