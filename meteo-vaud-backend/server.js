@@ -30,6 +30,15 @@ const { fetchAzureMapsForStations } = require("./sources/azuremaps");
 const app = express();
 app.use(cors());
 
+// Empeche le navigateur (Safari mobile en particulier, connu pour etre
+// agressif) de mettre en cache les reponses JSON de l'API. Sans ca, un
+// bouton "rafraichir" cote frontend peut ne rien changer si le navigateur
+// sert une reponse deja en cache sans meme recontacter le serveur.
+app.use((req, res, next) => {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  next();
+});
+
 const PORT = process.env.PORT || 3000;
 const DATA_REFRESH_MS = 10 * 60 * 1000; // 10 minutes, aligne sur la cadence SwissMetNet
 const CAPITALS_REFRESH_MS = 30 * 60 * 1000; // 30 minutes, largement suffisant pour des capitales
