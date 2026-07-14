@@ -628,6 +628,13 @@
     padding: 7px 12px;
     border-radius: 6px;
     outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .search-row input::-webkit-search-cancel-button,
+  .search-row input::-webkit-search-decoration {
+    -webkit-appearance: none;
   }
 
   .search-row input:focus {
@@ -945,7 +952,7 @@
       </div>
     </div>
     <div class="search-row">
-      <input type="text" id="citySearch" placeholder="Rechercher une ville dans toutes les regions..." autocomplete="off">
+      <input type="search" id="citySearch" name="citySearch" placeholder="Rechercher une ville dans toutes les regions..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-dashlane-ignore="true">
       <span id="searchCount"></span>
     </div>
     <div class="region-tabs" id="regionTabs">
