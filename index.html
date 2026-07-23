@@ -841,6 +841,44 @@
     text-transform: capitalize;
   }
 
+  /* ---------- Recherche universelle (Nominatim) ---------- */
+
+  .locate-results {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .locate-results li {
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--hairline);
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .locate-results li:hover {
+    background: var(--panel-alt);
+  }
+
+  .locate-results .locate-name {
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  .locate-results .locate-detail {
+    font-size: 11px;
+    color: var(--text-faint);
+    margin-top: 2px;
+  }
+
+  .locate-empty {
+    padding: 20px 22px;
+    color: var(--text-faint);
+    font-size: 12px;
+    text-align: center;
+  }
+
   /* ---------- Responsive ---------- */
 
   @media (max-width: 780px) {
@@ -911,6 +949,7 @@
       <button class="rain-toggle" id="capitalsToggle">🌍 CAPITALES</button>
       <button class="rain-toggle" id="compareToggle">⚖️ COMPARAISON</button>
       <button class="rain-toggle" id="profileToggleHeader">📊 PROFIL</button>
+      <button class="rain-toggle" id="locateToggle">🔍 LOCALISER</button>
       <div class="status" id="status">
         <span class="dot"></span>
         <span id="statusText">connexion...</span>
@@ -1061,6 +1100,27 @@
   </div>
 </div>
 
+<div class="capitals-overlay" id="locateOverlay">
+  <div class="capitals-panel" style="max-width: 480px;">
+    <div class="capitals-header">
+      <div>
+        <h2>Localiser un lieu</h2>
+        <div class="capitals-sub">N'importe quel endroit dans le monde</div>
+      </div>
+      <button class="detail-close" id="locateClose">✕</button>
+    </div>
+    <div class="search-row" style="border-bottom: 1px solid var(--hairline);">
+      <input type="search" id="locateSearch" name="locateSearch" placeholder="Ville, village, adresse, lieu-dit..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-dashlane-ignore="true">
+    </div>
+    <div class="capitals-table-wrap">
+      <ul class="locate-results" id="locateResults"></ul>
+    </div>
+    <div class="hrecord" style="padding: 8px 22px; color: var(--text-faint); font-size: 10px; border-top: 1px solid var(--hairline);">
+      Recherche via Nominatim / OpenStreetMap
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 (function () {
@@ -1111,7 +1171,12 @@
     compareOverlay: document.getElementById("compareOverlay"),
     compareClose: document.getElementById("compareClose"),
     compareSub: document.getElementById("compareSub"),
-    compareBody: document.getElementById("compareBody")
+    compareBody: document.getElementById("compareBody"),
+    locateToggle: document.getElementById("locateToggle"),
+    locateOverlay: document.getElementById("locateOverlay"),
+    locateClose: document.getElementById("locateClose"),
+    locateSearch: document.getElementById("locateSearch"),
+    locateResults: document.getElementById("locateResults")
   };
 
   var currentScope = "vd";
@@ -2081,6 +2146,101 @@
 
   els.compareOverlay.addEventListener("click", function (e) {
     if (e.target === els.compareOverlay) els.compareOverlay.classList.remove("open");
+  });
+
+  // -------------------------------------------------------------------
+  // Recherche universelle (Nominatim / OpenStreetMap) - n'importe quel
+  // lieu au monde, pas seulement les capitales/villes deja connues.
+  // -------------------------------------------------------------------
+
+  var NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
+  var locateDebounceTimer = null;
+  var locateAbortController = null;
+
+  function renderLocateResults(results) {
+    els.locateResults.innerHTML = "";
+
+    if (!results || results.length === 0) {
+      els.locateResults.innerHTML = '<li class="locate-empty">Aucun resultat</li>';
+      return;
+    }
+
+    results.forEach(function (r) {
+      var li = document.createElement("li");
+
+      var name = document.createElement("div");
+      name.className = "locate-name";
+      name.textContent = r.name || r.display_name.split(",")[0];
+
+      var detail = document.createElement("div");
+      detail.className = "locate-detail";
+      detail.textContent = r.display_name;
+
+      li.appendChild(name);
+      li.appendChild(detail);
+
+      li.addEventListener("click", function () {
+        showSpotlight(parseFloat(r.lat), parseFloat(r.lon), r.display_name);
+        els.locateOverlay.classList.remove("open");
+        els.locateSearch.value = "";
+        els.locateResults.innerHTML = "";
+      });
+
+      els.locateResults.appendChild(li);
+    });
+  }
+
+  function searchLocate(query) {
+    if (locateAbortController) locateAbortController.abort();
+    locateAbortController = new AbortController();
+
+    els.locateResults.innerHTML = '<li class="locate-empty">Recherche...</li>';
+
+    var url = NOMINATIM_URL + "?q=" + encodeURIComponent(query) +
+      "&format=json&addressdetails=0&limit=8&accept-language=fr";
+
+    fetch(url, { signal: locateAbortController.signal, cache: "no-store" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(renderLocateResults)
+      .catch(function (err) {
+        if (err.name === "AbortError") return; // requete annulee par une frappe suivante, normal
+        els.locateResults.innerHTML = '<li class="locate-empty">Erreur de recherche.</li>';
+      });
+  }
+
+  els.locateSearch.addEventListener("input", function () {
+    var query = els.locateSearch.value.trim();
+    clearTimeout(locateDebounceTimer);
+
+    if (query.length < 3) {
+      els.locateResults.innerHTML = "";
+      return;
+    }
+
+    // Anti-rebond : Nominatim demande de ne pas depasser 1 requete/seconde
+    locateDebounceTimer = setTimeout(function () { searchLocate(query); }, 600);
+  });
+
+  els.locateToggle.addEventListener("click", function () {
+    els.locateOverlay.classList.add("open");
+    els.locateSearch.focus();
+  });
+
+  els.locateClose.addEventListener("click", function () {
+    els.locateOverlay.classList.remove("open");
+    els.locateSearch.value = "";
+    els.locateResults.innerHTML = "";
+  });
+
+  els.locateOverlay.addEventListener("click", function (e) {
+    if (e.target === els.locateOverlay) {
+      els.locateOverlay.classList.remove("open");
+      els.locateSearch.value = "";
+      els.locateResults.innerHTML = "";
+    }
   });
 
   // -------------------------------------------------------------------
