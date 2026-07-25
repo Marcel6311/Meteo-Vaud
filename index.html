@@ -1199,9 +1199,10 @@
     zoomControl: true,
     attributionControl: true,
     worldCopyJump: false,
-    maxBounds: WORLD_BOUNDS,
-    maxBoundsViscosity: 1.0,
-    minZoom: 2
+    minZoom: 2,
+    zoomSnap: 0.5,
+    zoomDelta: 0.5,
+    wheelPxPerZoomLevel: 100
   })
     .setView(SCOPE_VIEWS.vd.center, SCOPE_VIEWS.vd.zoom);
 
