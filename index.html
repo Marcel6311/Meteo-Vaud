@@ -1349,6 +1349,29 @@
   }
 
   /**
+   * Dessine le contour reel d'une zone administrative (departement,
+   * canton, region, pays...) sur la carte, a partir du GeoJSON renvoye
+   * par Nominatim. Ajoute au meme tableau que les marqueurs ponctuels
+   * pour etre efface avec eux via clearSpotlights().
+   */
+  function addSpotlightArea(geojson, label) {
+    var layer = L.geoJSON(geojson, {
+      style: {
+        color: "#C98A1D",
+        weight: 2,
+        fillColor: "#C98A1D",
+        fillOpacity: 0.12
+      }
+    }).addTo(map);
+
+    if (label) layer.bindPopup("<b>" + label + "</b>").openPopup();
+
+    spotlightMarkers.push(layer);
+    map.fitBounds(layer.getBounds(), { padding: [40, 40] });
+    return layer;
+  }
+
+  /**
    * Recentre la carte principale sur un lieu et y place un marqueur
    * distinctif, en retirant les precedents (utilise par les tableaux
    * capitales/comparaison pour "localiser cette ville" en un clic - un
@@ -2247,14 +2270,19 @@
 
       var detail = document.createElement("div");
       detail.className = "locate-detail";
-      detail.textContent = r.display_name;
+      detail.textContent = r.display_name +
+        (r.type === "administrative" ? " · zone administrative" : "");
 
       li.appendChild(name);
       li.appendChild(detail);
 
       li.addEventListener("click", function () {
-        addSpotlight(parseFloat(r.lat), parseFloat(r.lon), r.display_name);
-        map.setView([parseFloat(r.lat), parseFloat(r.lon)], 9);
+        if (r.geojson) {
+          addSpotlightArea(r.geojson, r.display_name);
+        } else {
+          addSpotlight(parseFloat(r.lat), parseFloat(r.lon), r.display_name);
+          map.setView([parseFloat(r.lat), parseFloat(r.lon)], 9);
+        }
         // Le panneau reste ouvert expres : on peut chercher et ajouter
         // plusieurs lieux d'affilee pour les comparer sur la meme carte.
         els.locateSearch.value = "";
@@ -2273,7 +2301,8 @@
     els.locateResults.innerHTML = '<li class="locate-empty">Recherche...</li>';
 
     var url = NOMINATIM_URL + "?q=" + encodeURIComponent(query) +
-      "&format=json&addressdetails=0&limit=8&accept-language=fr";
+      "&format=json&addressdetails=0&limit=8&accept-language=fr" +
+      "&polygon_geojson=1&polygon_threshold=0.005"; // contour reel pour les zones (departements, cantons...)
 
     fetch(url, { signal: locateAbortController.signal, cache: "no-store" })
       .then(function (res) {
