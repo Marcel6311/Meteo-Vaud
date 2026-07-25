@@ -26,6 +26,7 @@ const { fetchCurrentReadings } = require("./sources/swissmetnet");
 const { getAllStations } = require("./sources/stationRegistry");
 const { fetchCapitalsList } = require("./sources/capitals");
 const { fetchAzureMapsForStations } = require("./sources/azuremaps");
+const { fetchHeatwaveForStations, TEMP_THRESHOLD_C, CONSECUTIVE_DAYS_THRESHOLD } = require("./sources/heatwave");
 
 const app = express();
 app.use(cors());
@@ -70,6 +71,8 @@ let capitalCaches = {};
 Object.keys(CAPITAL_REGIONS).forEach((region) => {
   capitalCaches[region] = { updatedAt: null, readings: [], lastError: null };
 });
+
+let heatwaveCache = { updatedAt: null, readings: [], lastError: null };
 
 function pickScope(req) {
   const scope = (req.query.scope || "vd").toLowerCase();
@@ -129,6 +132,23 @@ async function refreshAllCapitalRegions() {
   // simultanees a OpenWeatherMap et de risquer un plafond par minute.
   for (const region of Object.keys(CAPITAL_REGIONS)) {
     await refreshCapitalRegion(region);
+  }
+}
+
+async function refreshHeatwave() {
+  try {
+    const readings = await fetchHeatwaveForStations(VD_STATIONS);
+    heatwaveCache = {
+      updatedAt: new Date().toISOString(),
+      readings,
+      lastError: null
+    };
+    console.log(
+      `[refresh:heatwave] ${readings.length} stations analysees (${heatwaveCache.updatedAt})`
+    );
+  } catch (err) {
+    heatwaveCache.lastError = err.message;
+    console.error("[refresh:heatwave] echec :", err.message);
   }
 }
 
@@ -240,6 +260,21 @@ app.get("/stations/compare", async (req, res) => {
   }
 });
 
+// GET /stations/heatwave - indicateur "maison" de canicule (voir sources/heatwave.js)
+// IMPORTANT : cette route doit rester declaree AVANT /stations/:code,
+// sinon Express interprete "heatwave" comme un code de station.
+app.get("/stations/heatwave", (req, res) => {
+  res.json({
+    source: "Indicateur maison (previsions OpenWeatherMap)",
+    note: "Ce n'est PAS le plan canicule officiel. Seuil applique : " +
+      TEMP_THRESHOLD_C + "\u00b0C sur au moins " + CONSECUTIVE_DAYS_THRESHOLD +
+      " jours consecutifs, sur un horizon de prevision de 5 jours.",
+    updatedAt: heatwaveCache.updatedAt,
+    lastError: heatwaveCache.lastError,
+    readings: heatwaveCache.readings
+  });
+});
+
 // GET /stations/:code?scope=vd|ch - derniere valeur pour une station precise
 app.get("/stations/:code", (req, res) => {
   const scope = pickScope(req);
@@ -289,6 +324,8 @@ app.listen(PORT, async () => {
   console.log(`Meteo-Vaud backend demarre sur le port ${PORT}`);
   await refreshAll(); // premier chargement immediat au demarrage (vd + ch)
   await refreshAllCapitalRegions();
+  await refreshHeatwave();
   setInterval(refreshAll, DATA_REFRESH_MS);
+  setInterval(refreshHeatwave, 3 * 60 * 60 * 1000); // 3h : la prevision OWM ne change pas assez vite pour justifier plus frequent
   setInterval(refreshAllCapitalRegions, CAPITALS_REFRESH_MS);
 });
