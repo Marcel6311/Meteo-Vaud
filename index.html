@@ -254,6 +254,26 @@
     justify-content: space-between;
   }
 
+  .heatwave-banner {
+    padding: 10px 16px;
+    background: rgba(201, 138, 29, 0.12);
+    border-bottom: 1px solid rgba(201, 138, 29, 0.4);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--amber);
+  }
+
+  .heatwave-banner strong {
+    font-family: var(--font-mono);
+  }
+
+  .heatwave-banner .hw-note {
+    display: block;
+    margin-top: 3px;
+    font-size: 10px;
+    color: var(--text-faint);
+  }
+
   #profileToggle {
     background: transparent;
     border: 1px solid var(--hairline);
@@ -978,6 +998,7 @@
         <span>Profil d'altitude</span>
         <button id="profileToggle" title="Masquer/afficher le profil">✕</button>
       </div>
+      <div class="heatwave-banner" id="heatwaveBanner" style="display:none;"></div>
       <div class="profile-scroll">
         <div class="profile-track" id="profileTrack">
           <div class="loading-msg">Chargement des stations...</div>
@@ -1147,6 +1168,7 @@
     profileAside: document.getElementById("profileAside"),
     profileToggle: document.getElementById("profileToggle"),
     profileToggleHeader: document.getElementById("profileToggleHeader"),
+    heatwaveBanner: document.getElementById("heatwaveBanner"),
     detail: document.getElementById("detail"),
     dTitle: document.getElementById("dTitle"),
     dSub: document.getElementById("dSub"),
@@ -2299,6 +2321,54 @@
   });
 
   // -------------------------------------------------------------------
+  // Indicateur "maison" de canicule (voir sources/heatwave.js cote backend)
+  // -------------------------------------------------------------------
+
+  function formatDateFr(isoDate) {
+    // isoDate au format "YYYY-MM-DD"
+    var parts = isoDate.split("-");
+    return parts[2] + "." + parts[1];
+  }
+
+  function renderHeatwaveBanner(data) {
+    var withEpisode = (data.readings || []).filter(function (r) { return r.heatwave; });
+
+    if (withEpisode.length === 0) {
+      els.heatwaveBanner.style.display = "none";
+      return;
+    }
+
+    // On affiche l'episode le plus large (date de debut la plus tot,
+    // date de fin la plus tardive) parmi les stations concernees.
+    var starts = withEpisode.map(function (r) { return r.heatwave.start_date; }).sort();
+    var ends = withEpisode.map(function (r) { return r.heatwave.end_date; }).sort();
+    var earliestStart = starts[0];
+    var latestEnd = ends[ends.length - 1];
+    var anyOngoing = withEpisode.some(function (r) { return r.heatwave.ongoing; });
+    var stationNames = withEpisode.map(function (r) { return r.station_name; }).join(", ");
+
+    els.heatwaveBanner.innerHTML =
+      "🌡️ Episode chaud detecte : <strong>" + formatDateFr(earliestStart) + " → " + formatDateFr(latestEnd) +
+      (anyOngoing ? "+" : "") + "</strong><br>" +
+      "Stations concernees : " + stationNames +
+      '<span class="hw-note">Indicateur maison (' + data.note.split("Seuil applique : ")[1] +
+      ') - pas le plan canicule officiel.</span>';
+    els.heatwaveBanner.style.display = "block";
+  }
+
+  function loadHeatwave() {
+    fetch(API_BASE + "/stations/heatwave?_t=" + Date.now(), { cache: "no-store" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(renderHeatwaveBanner)
+      .catch(function () {
+        // Echec silencieux : la banniere reste simplement masquee, ce n'est pas une donnee critique
+      });
+  }
+
+  // -------------------------------------------------------------------
   // Fetch + status
   // -------------------------------------------------------------------
 
@@ -2372,11 +2442,14 @@
     if (document.visibilityState === "visible") {
       load();
       fetchRainFrames();
+      loadHeatwave();
     }
   });
 
   load();
   setInterval(load, REFRESH_MS);
+  loadHeatwave();
+  setInterval(loadHeatwave, 60 * 60 * 1000); // 1h : le backend lui-meme ne se rafraichit que toutes les 3h
 
 })();
 </script>
