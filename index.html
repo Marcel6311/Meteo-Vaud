@@ -1239,6 +1239,7 @@
   }).addTo(map);
 
   var markers = {}; // station_id -> L.circleMarker
+  var currentReadings = []; // dernieres lectures recues, pour retrouver la couleur d'origine au deselectionnement
   // (spotlightMarkers declare plus bas, avec clearSpotlights/addSpotlight/showSpotlight)
 
   // -------------------------------------------------------------------
@@ -1561,10 +1562,31 @@
     return div;
   }
 
+  var selectedStationId = null;
+
+  function highlightStationMarker(stationId, readings) {
+    // Remet le point precedemment selectionne a sa couleur normale (temperature)
+    if (selectedStationId !== null && markers[selectedStationId]) {
+      var prevReading = (readings || []).find(function (r) { return r.station_id === selectedStationId; });
+      var prevColor = prevReading ? tempColor(prevReading.temperature) : "#5C6570";
+      markers[selectedStationId].setStyle({ fillColor: prevColor, color: "#10141A" });
+    }
+
+    // Met le nouveau point selectionne en rouge, avec un contour distinct
+    if (markers[stationId]) {
+      markers[stationId].setStyle({ fillColor: "#E0432B", color: "#FFFFFF" });
+      markers[stationId].bringToFront();
+    }
+
+    selectedStationId = stationId;
+  }
+
   function openDetail(r) {
     document.querySelectorAll(".station-row").forEach(function (el) {
       el.classList.toggle("active", el.dataset.id === r.station_id);
     });
+
+    highlightStationMarker(r.station_id, currentReadings);
 
     els.dTitle.textContent = r.station_name;
     els.dSub.textContent = r.station_id + " · " + (r.altitude_m || "—") + "m · " + timeAgo(r.timestamp);
@@ -2425,6 +2447,7 @@
           return;
         }
         computeColorRange(data.readings);
+        currentReadings = data.readings;
         renderProfile(data.readings);
         renderMap(data.readings);
         setStatus("live", "en direct · " + data.count + " stations");
@@ -2445,6 +2468,7 @@
     });
 
     els.detail.classList.remove("open");
+    selectedStationId = null; // les marqueurs vont etre recrees, l'ancienne reference n'est plus valide
 
     var view = SCOPE_VIEWS[scope];
     map.setView(view.center, view.zoom);
