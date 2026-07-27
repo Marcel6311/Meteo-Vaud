@@ -972,6 +972,10 @@
       <button class="rain-toggle" id="rainToggle">☂ PLUIE</button>
       <button class="rain-toggle" id="tempToggle">🌡 TEMPERATURE</button>
       <button class="rain-toggle" id="fireToggle">🔥 INCENDIES</button>
+      <button class="rain-toggle" id="satelliteToggle">🛰 SATELLITE</button>
+      <button class="rain-toggle" id="aerosolToggle">💨 AÉROSOLS</button>
+      <button class="rain-toggle" id="snowToggle">❄️ NEIGE</button>
+      <button class="rain-toggle" id="eonetToggle">🌎 ÉVÉNEMENTS</button>
       <button class="rain-toggle" id="capitalsToggle">🌍 CAPITALES</button>
       <button class="rain-toggle" id="compareToggle">⚖️ COMPARAISON</button>
       <button class="rain-toggle" id="profileToggleHeader">📊 PROFIL</button>
@@ -1012,7 +1016,7 @@
   </main>
 
   <footer>
-    <span>Source: MeteoSwiss (SwissMetNet, OGD) · CC-BY · Pluie: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> · Temp. Europe: <a href="https://openweathermap.org/" target="_blank" rel="noopener">OpenWeatherMap</a> · Incendies: <a href="https://firms.modaps.eosdis.nasa.gov/" target="_blank" rel="noopener">NASA FIRMS</a></span>
+    <span>Source: MeteoSwiss (SwissMetNet, OGD) · CC-BY · Pluie: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> · Temp. Europe: <a href="https://openweathermap.org/" target="_blank" rel="noopener">OpenWeatherMap</a> · Incendies/Satellite/Aérosols/Neige/Événements: <a href="https://www.nasa.gov/" target="_blank" rel="noopener">NASA (FIRMS, GIBS, EONET)</a></span>
     <span class="footer-refresh">
       <span id="updatedAt">—</span>
       <button id="manualRefresh" title="Rafraichir maintenant">⟳</button>
@@ -1130,6 +1134,25 @@
   </div>
 </div>
 
+<div class="capitals-overlay" id="eonetOverlay">
+  <div class="capitals-panel" style="max-width: 560px;">
+    <div class="capitals-header">
+      <div>
+        <h2>Événements naturels en cours</h2>
+        <div class="capitals-sub" id="eonetSub">—</div>
+      </div>
+      <button class="detail-close" id="eonetClose">✕</button>
+    </div>
+    <div class="region-tabs" id="eonetCategoryTabs"></div>
+    <div class="capitals-table-wrap">
+      <ul class="locate-results" id="eonetResults"></ul>
+    </div>
+    <div class="hrecord" style="padding: 8px 22px; color: var(--text-faint); font-size: 10px; border-top: 1px solid var(--hairline);">
+      Source : NASA EONET (Earth Observatory Natural Event Tracker)
+    </div>
+  </div>
+</div>
+
 <div class="capitals-overlay" id="locateOverlay">
   <div class="capitals-panel" style="max-width: 480px;">
     <div class="capitals-header">
@@ -1183,6 +1206,15 @@
     rainToggle: document.getElementById("rainToggle"),
     tempToggle: document.getElementById("tempToggle"),
     fireToggle: document.getElementById("fireToggle"),
+    satelliteToggle: document.getElementById("satelliteToggle"),
+    aerosolToggle: document.getElementById("aerosolToggle"),
+    snowToggle: document.getElementById("snowToggle"),
+    eonetToggle: document.getElementById("eonetToggle"),
+    eonetOverlay: document.getElementById("eonetOverlay"),
+    eonetClose: document.getElementById("eonetClose"),
+    eonetSub: document.getElementById("eonetSub"),
+    eonetCategoryTabs: document.getElementById("eonetCategoryTabs"),
+    eonetResults: document.getElementById("eonetResults"),
     rainControls: document.getElementById("rainControls"),
     rainPrev: document.getElementById("rainPrev"),
     rainPlay: document.getElementById("rainPlay"),
@@ -1950,6 +1982,76 @@
   });
 
   // -------------------------------------------------------------------
+  // Calques imagerie satellite NASA GIBS (vraies couleurs, aerosols, neige)
+  // -------------------------------------------------------------------
+  // Meme service que les incendies (gratuit, sans cle). Toutes ces
+  // couches sont des observations satellite quotidiennes (MODIS Terra),
+  // pas du temps reel comme le radar pluie.
+
+  function buildGibsWmsLayer(layerName, format, zIndex) {
+    return L.tileLayer.wms("https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi", {
+      layers: layerName,
+      format: format,
+      transparent: format === "image/png",
+      version: "1.1.1",
+      time: "default",
+      zIndex: zIndex,
+      noWrap: true,
+      attribution: "NASA GIBS"
+    });
+  }
+
+  function makeGibsToggle(config) {
+    var layer = null;
+    var visible = false;
+
+    function show() {
+      if (!layer) layer = buildGibsWmsLayer(config.layerName, config.format, config.zIndex);
+      if (!map.hasLayer(layer)) map.addLayer(layer);
+    }
+
+    function hide() {
+      if (layer) map.removeLayer(layer);
+    }
+
+    function refresh() {
+      if (!visible) return;
+      hide();
+      layer = buildGibsWmsLayer(config.layerName, config.format, config.zIndex);
+      map.addLayer(layer);
+    }
+
+    setInterval(refresh, 24 * 60 * 60 * 1000); // 1 jour : imagerie satellite quotidienne
+
+    config.button.addEventListener("click", function () {
+      visible = !visible;
+      config.button.classList.toggle("active", visible);
+      if (visible) { show(); } else { hide(); }
+    });
+  }
+
+  makeGibsToggle({
+    button: els.satelliteToggle,
+    layerName: "MODIS_Terra_CorrectedReflectance_TrueColor",
+    format: "image/jpeg",
+    zIndex: 350 // sous toutes les autres couches, comme un fond de carte alternatif
+  });
+
+  makeGibsToggle({
+    button: els.aerosolToggle,
+    layerName: "MODIS_Terra_Aerosol",
+    format: "image/png",
+    zIndex: 470
+  });
+
+  makeGibsToggle({
+    button: els.snowToggle,
+    layerName: "MODIS_Terra_NDSI_Snow_Cover",
+    format: "image/png",
+    zIndex: 460
+  });
+
+  // -------------------------------------------------------------------
   // Tableau des capitales (Europe + 5 autres regions)
   // -------------------------------------------------------------------
 
@@ -2478,6 +2580,141 @@
         // Echec silencieux : la banniere reste simplement masquee, ce n'est pas une donnee critique
       });
   }
+
+  // -------------------------------------------------------------------
+  // NASA EONET - evenements naturels mondiaux en cours
+  // -------------------------------------------------------------------
+
+  var EONET_URL = "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=300";
+  var eonetEvents = [];
+  var eonetCategory = "all";
+  var eonetLoaded = false;
+
+  var EONET_ICONS = {
+    "Wildfires": "🔥",
+    "Severe Storms": "🌀",
+    "Volcanoes": "🌋",
+    "Sea and Lake Ice": "🧊",
+    "Floods": "🌊",
+    "Drought": "🏜️",
+    "Dust and Haze": "💨",
+    "Earthquakes": "🌎",
+    "Landslides": "⛰️",
+    "Snow": "❄️",
+    "Temperature Extremes": "🌡️",
+    "Water Color": "💧",
+    "Manmade": "🏭"
+  };
+
+  function eonetIcon(categoryTitle) {
+    return EONET_ICONS[categoryTitle] || "•";
+  }
+
+  function renderEonetTabs() {
+    var categories = {};
+    eonetEvents.forEach(function (ev) {
+      (ev.categories || []).forEach(function (c) { categories[c.title] = true; });
+    });
+
+    var tabs = ['<button data-cat="all" class="' + (eonetCategory === "all" ? "active" : "") + '">Tous (' + eonetEvents.length + ")</button>"];
+    Object.keys(categories).sort().forEach(function (cat) {
+      var count = eonetEvents.filter(function (ev) {
+        return (ev.categories || []).some(function (c) { return c.title === cat; });
+      }).length;
+      tabs.push('<button data-cat="' + cat + '" class="' + (eonetCategory === cat ? "active" : "") + '">' +
+        eonetIcon(cat) + " " + cat + " (" + count + ")</button>");
+    });
+
+    els.eonetCategoryTabs.innerHTML = tabs.join("");
+    els.eonetCategoryTabs.querySelectorAll("button").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        eonetCategory = btn.dataset.cat;
+        renderEonetTabs();
+        renderEonetList();
+      });
+    });
+  }
+
+  function renderEonetList() {
+    var filtered = eonetCategory === "all"
+      ? eonetEvents
+      : eonetEvents.filter(function (ev) {
+          return (ev.categories || []).some(function (c) { return c.title === eonetCategory; });
+        });
+
+    els.eonetResults.innerHTML = "";
+
+    if (filtered.length === 0) {
+      els.eonetResults.innerHTML = '<li class="locate-empty">Aucun evenement dans cette categorie</li>';
+      return;
+    }
+
+    filtered.forEach(function (ev) {
+      var lastGeom = ev.geometry && ev.geometry[ev.geometry.length - 1];
+      var catTitle = ev.categories && ev.categories[0] ? ev.categories[0].title : "";
+
+      var li = document.createElement("li");
+
+      var name = document.createElement("div");
+      name.className = "locate-name";
+      name.textContent = eonetIcon(catTitle) + " " + ev.title;
+
+      var detail = document.createElement("div");
+      detail.className = "locate-detail";
+      var dateStr = lastGeom ? new Date(lastGeom.date).toLocaleDateString("fr-CH") : "";
+      detail.textContent = catTitle + (dateStr ? " · maj " + dateStr : "");
+
+      li.appendChild(name);
+      li.appendChild(detail);
+
+      li.addEventListener("click", function () {
+        if (!lastGeom) return;
+        if (lastGeom.type === "Point") {
+          var lon = lastGeom.coordinates[0];
+          var lat = lastGeom.coordinates[1];
+          addSpotlight(lat, lon, ev.title);
+          map.setView([lat, lon], 6);
+        } else if (lastGeom.type === "Polygon") {
+          addSpotlightArea({ type: "Feature", geometry: { type: "Polygon", coordinates: lastGeom.coordinates } }, ev.title);
+        }
+        els.eonetOverlay.classList.remove("open");
+      });
+
+      els.eonetResults.appendChild(li);
+    });
+  }
+
+  function loadEonet() {
+    els.eonetResults.innerHTML = '<li class="locate-empty">Chargement...</li>';
+    fetch(EONET_URL + "&_t=" + Date.now(), { cache: "no-store" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        eonetEvents = data.events || [];
+        eonetLoaded = true;
+        els.eonetSub.textContent = eonetEvents.length + " evenements en cours dans le monde";
+        renderEonetTabs();
+        renderEonetList();
+      })
+      .catch(function (err) {
+        els.eonetResults.innerHTML = '<li class="locate-empty">Erreur de chargement.<br>' + err.message + "</li>";
+      });
+  }
+
+  els.eonetToggle.addEventListener("click", function () {
+    els.eonetOverlay.classList.add("open");
+    if (!eonetLoaded) loadEonet();
+  });
+
+  els.eonetClose.addEventListener("click", function () {
+    els.eonetOverlay.classList.remove("open");
+  });
+
+  els.eonetOverlay.addEventListener("click", function (e) {
+    if (e.target === els.eonetOverlay) els.eonetOverlay.classList.remove("open");
+  });
 
   // -------------------------------------------------------------------
   // Fetch + status
