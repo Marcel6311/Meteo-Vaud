@@ -1143,6 +1143,10 @@
       </div>
       <button class="detail-close" id="eonetClose">✕</button>
     </div>
+    <div class="search-row">
+      <input type="search" id="eonetSearch" name="eonetSearch" placeholder="Rechercher un evenement (nom, lieu...)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-dashlane-ignore="true">
+      <span id="eonetSearchCount"></span>
+    </div>
     <div class="region-tabs" id="eonetCategoryTabs"></div>
     <div class="capitals-table-wrap">
       <ul class="locate-results" id="eonetResults"></ul>
@@ -1215,6 +1219,8 @@
     eonetSub: document.getElementById("eonetSub"),
     eonetCategoryTabs: document.getElementById("eonetCategoryTabs"),
     eonetResults: document.getElementById("eonetResults"),
+    eonetSearch: document.getElementById("eonetSearch"),
+    eonetSearchCount: document.getElementById("eonetSearchCount"),
     rainControls: document.getElementById("rainControls"),
     rainPrev: document.getElementById("rainPrev"),
     rainPlay: document.getElementById("rainPlay"),
@@ -2642,10 +2648,21 @@
           return (ev.categories || []).some(function (c) { return c.title === eonetCategory; });
         });
 
+    var query = els.eonetSearch.value.trim().toLowerCase();
+    if (query.length > 0) {
+      filtered = filtered.filter(function (ev) {
+        return ev.title.toLowerCase().indexOf(query) !== -1;
+      });
+    }
+
+    els.eonetSearchCount.textContent = query.length > 0
+      ? filtered.length + " resultat" + (filtered.length > 1 ? "s" : "")
+      : "";
+
     els.eonetResults.innerHTML = "";
 
     if (filtered.length === 0) {
-      els.eonetResults.innerHTML = '<li class="locate-empty">Aucun evenement dans cette categorie</li>';
+      els.eonetResults.innerHTML = '<li class="locate-empty">Aucun evenement trouve</li>';
       return;
     }
 
@@ -2703,6 +2720,8 @@
       });
   }
 
+  els.eonetSearch.addEventListener("input", renderEonetList);
+
   els.eonetToggle.addEventListener("click", function () {
     els.eonetOverlay.classList.add("open");
     if (!eonetLoaded) loadEonet();
@@ -2710,10 +2729,16 @@
 
   els.eonetClose.addEventListener("click", function () {
     els.eonetOverlay.classList.remove("open");
+    els.eonetSearch.value = "";
+    els.eonetSearchCount.textContent = "";
   });
 
   els.eonetOverlay.addEventListener("click", function (e) {
-    if (e.target === els.eonetOverlay) els.eonetOverlay.classList.remove("open");
+    if (e.target === els.eonetOverlay) {
+      els.eonetOverlay.classList.remove("open");
+      els.eonetSearch.value = "";
+      els.eonetSearchCount.textContent = "";
+    }
   });
 
   // -------------------------------------------------------------------
