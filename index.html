@@ -971,6 +971,7 @@
       </div>
       <button class="rain-toggle" id="rainToggle">☂ PLUIE</button>
       <button class="rain-toggle" id="tempToggle">🌡 TEMPERATURE</button>
+      <button class="rain-toggle" id="fireToggle">🔥 INCENDIES</button>
       <button class="rain-toggle" id="capitalsToggle">🌍 CAPITALES</button>
       <button class="rain-toggle" id="compareToggle">⚖️ COMPARAISON</button>
       <button class="rain-toggle" id="profileToggleHeader">📊 PROFIL</button>
@@ -1011,7 +1012,7 @@
   </main>
 
   <footer>
-    <span>Source: MeteoSwiss (SwissMetNet, OGD) · CC-BY · Pluie: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> · Temp. Europe: <a href="https://openweathermap.org/" target="_blank" rel="noopener">OpenWeatherMap</a></span>
+    <span>Source: MeteoSwiss (SwissMetNet, OGD) · CC-BY · Pluie: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> · Temp. Europe: <a href="https://openweathermap.org/" target="_blank" rel="noopener">OpenWeatherMap</a> · Incendies: <a href="https://firms.modaps.eosdis.nasa.gov/" target="_blank" rel="noopener">NASA FIRMS</a></span>
     <span class="footer-refresh">
       <span id="updatedAt">—</span>
       <button id="manualRefresh" title="Rafraichir maintenant">⟳</button>
@@ -1181,6 +1182,7 @@
     scopeToggle: document.getElementById("scopeToggle"),
     rainToggle: document.getElementById("rainToggle"),
     tempToggle: document.getElementById("tempToggle"),
+    fireToggle: document.getElementById("fireToggle"),
     rainControls: document.getElementById("rainControls"),
     rainPrev: document.getElementById("rainPrev"),
     rainPlay: document.getElementById("rainPlay"),
@@ -1889,6 +1891,60 @@
       showTempLayer();
     } else {
       hideTempLayer();
+    }
+  });
+
+  // -------------------------------------------------------------------
+  // Calque incendies actifs (NASA FIRMS via GIBS - gratuit, sans cle)
+  // -------------------------------------------------------------------
+  // Detections satellite VIIRS (~12h de delai), pas un temps reel comme
+  // le radar pluie. Rafraichi une fois par jour, cadence suffisante vu
+  // la nature de la donnee source.
+
+  var fireLayer = null;
+  var fireVisible = false;
+  var FIRE_REFRESH_MS = 24 * 60 * 60 * 1000; // 1 jour
+
+  function buildFireLayer() {
+    return L.tileLayer.wms("https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi", {
+      layers: "VIIRS_NOAA20_Thermal_Anomalies_375m_All",
+      format: "image/png",
+      transparent: true,
+      version: "1.1.1",
+      time: "default",
+      opacity: 0.85,
+      zIndex: 480, // sous le radar pluie (500), au-dessus de la couverture radar (490)
+      attribution: "NASA FIRMS/GIBS"
+    });
+  }
+
+  function showFireLayer() {
+    if (!fireLayer) fireLayer = buildFireLayer();
+    if (!map.hasLayer(fireLayer)) map.addLayer(fireLayer);
+  }
+
+  function hideFireLayer() {
+    if (fireLayer) map.removeLayer(fireLayer);
+  }
+
+  function refreshFireLayer() {
+    if (fireVisible && fireLayer) {
+      // Reconstruit le calque pour forcer un nouveau TIME=default (nouvelle journee de detections)
+      hideFireLayer();
+      fireLayer = buildFireLayer();
+      map.addLayer(fireLayer);
+    }
+  }
+
+  setInterval(refreshFireLayer, FIRE_REFRESH_MS);
+
+  els.fireToggle.addEventListener("click", function () {
+    fireVisible = !fireVisible;
+    els.fireToggle.classList.toggle("active", fireVisible);
+    if (fireVisible) {
+      showFireLayer();
+    } else {
+      hideFireLayer();
     }
   });
 
