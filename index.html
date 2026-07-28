@@ -1274,8 +1274,7 @@
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
     attribution: '&copy; OpenStreetMap &copy; CARTO',
     maxZoom: 18,
-    noWrap: true,
-    bounds: WORLD_BOUNDS
+    noWrap: true
   }).addTo(map);
 
   var markers = {}; // station_id -> L.circleMarker
@@ -1994,13 +1993,27 @@
   // couches sont des observations satellite quotidiennes (MODIS Terra),
   // pas du temps reel comme le radar pluie.
 
+  /**
+   * Renvoie la date d'hier au format YYYY-MM-DD. Utilise pour les
+   * couches satellite composites quotidiennes (vraies couleurs,
+   * aerosols, neige) : demander "aujourd'hui" via TIME=default peut
+   * renvoyer une image partielle (trous noirs) si le satellite n'a pas
+   * encore survole toute la planete depuis minuit UTC. Hier est
+   * toujours une journee complete et garantie disponible.
+   */
+  function yesterdayDateString() {
+    var d = new Date();
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+
   function buildGibsWmsLayer(layerName, format, zIndex) {
     return L.tileLayer.wms("https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi", {
       layers: layerName,
       format: format,
       transparent: format === "image/png",
       version: "1.1.1",
-      time: "default",
+      time: yesterdayDateString(),
       zIndex: zIndex,
       noWrap: true,
       attribution: "NASA GIBS"
