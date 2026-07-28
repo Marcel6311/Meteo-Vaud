@@ -2052,7 +2052,7 @@
   makeGibsToggle({
     button: els.satelliteToggle,
     layerName: "MODIS_Terra_CorrectedReflectance_TrueColor",
-    format: "image/jpeg",
+    format: "image/png", // PNG plutot que JPEG : les zones sans donnee satellite restent transparentes (fond de carte visible) au lieu d'un noir opaque
     zIndex: 350 // sous toutes les autres couches, comme un fond de carte alternatif
   });
 
