@@ -977,6 +977,7 @@
       <button class="rain-toggle" id="snowToggle">❄️ NEIGE</button>
       <button class="rain-toggle" id="eonetToggle">🌎 ÉVÉNEMENTS</button>
       <button class="rain-toggle" id="effisToggle">🔥🇪🇺 FEUX UE (7j)</button>
+      <button class="rain-toggle" id="epicToggle">🌍 TERRE EN DIRECT</button>
       <button class="rain-toggle" id="capitalsToggle">🌍 CAPITALES</button>
       <button class="rain-toggle" id="compareToggle">⚖️ COMPARAISON</button>
       <button class="rain-toggle" id="profileToggleHeader">📊 PROFIL</button>
@@ -1158,6 +1159,30 @@
   </div>
 </div>
 
+<div class="capitals-overlay" id="epicOverlay">
+  <div class="capitals-panel" style="max-width: 620px;">
+    <div class="capitals-header">
+      <div>
+        <h2>La Terre vue de l'espace</h2>
+        <div class="capitals-sub" id="epicSub">—</div>
+      </div>
+      <button class="detail-close" id="epicClose">✕</button>
+    </div>
+    <div style="padding: 22px; text-align: center;">
+      <img id="epicImage" src="" alt="Image EPIC de la Terre" style="max-width: 100%; border-radius: 8px; background: #10141A;">
+      <div style="margin-top: 14px; display: flex; align-items: center; justify-content: center; gap: 10px;">
+        <button id="epicPrev" class="rain-toggle" style="padding: 6px 12px;">⏮</button>
+        <button id="epicPlay" class="rain-toggle" style="padding: 6px 12px;">▶</button>
+        <button id="epicNext" class="rain-toggle" style="padding: 6px 12px;">⏭</button>
+        <span id="epicTimestamp" style="font-family: var(--font-mono); font-size: 12px; color: var(--text-dim);">—</span>
+      </div>
+    </div>
+    <div class="hrecord" style="padding: 8px 22px; color: var(--text-faint); font-size: 10px; border-top: 1px solid var(--hairline);">
+      Camera EPIC / satellite DSCOVR, a 1,5 million de km de la Terre (point de Lagrange L1) · NASA/NOAA
+    </div>
+  </div>
+</div>
+
 <div class="capitals-overlay" id="locateOverlay">
   <div class="capitals-panel" style="max-width: 480px;">
     <div class="capitals-header">
@@ -1216,6 +1241,15 @@
     snowToggle: document.getElementById("snowToggle"),
     eonetToggle: document.getElementById("eonetToggle"),
     effisToggle: document.getElementById("effisToggle"),
+    epicToggle: document.getElementById("epicToggle"),
+    epicOverlay: document.getElementById("epicOverlay"),
+    epicClose: document.getElementById("epicClose"),
+    epicSub: document.getElementById("epicSub"),
+    epicImage: document.getElementById("epicImage"),
+    epicPrev: document.getElementById("epicPrev"),
+    epicPlay: document.getElementById("epicPlay"),
+    epicNext: document.getElementById("epicNext"),
+    epicTimestamp: document.getElementById("epicTimestamp"),
     eonetOverlay: document.getElementById("eonetOverlay"),
     eonetClose: document.getElementById("eonetClose"),
     eonetSub: document.getElementById("eonetSub"),
@@ -2820,6 +2854,98 @@
       els.eonetOverlay.classList.remove("open");
       els.eonetSearch.value = "";
       els.eonetSearchCount.textContent = "";
+    }
+  });
+
+  // -------------------------------------------------------------------
+  // NASA EPIC / DSCOVR - photos de la Terre entiere depuis 1,5 million
+  // de km (point de Lagrange L1). Plusieurs images par jour permettent
+  // de voir la rotation de la Terre en les enchainant.
+  // -------------------------------------------------------------------
+
+  var EPIC_API_KEY = "DEMO_KEY"; // cle publique de demonstration NASA, limite basse (30/h, 50/jour) - Marcel peut creer la sienne gratuitement sur api.nasa.gov si besoin
+  var epicFrames = []; // [{url, date}]
+  var epicIndex = 0;
+  var epicPlaying = false;
+  var epicPlayTimer = null;
+  var epicLoaded = false;
+
+  function pad2(n) { return String(n).padStart(2, "0"); }
+
+  function loadEpic() {
+    els.epicSub.textContent = "Chargement...";
+    fetch("https://epic.gsfc.nasa.gov/api/natural/images?api_key=" + EPIC_API_KEY + "&_t=" + Date.now(), { cache: "no-store" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        if (!data || data.length === 0) throw new Error("Aucune image disponible");
+
+        epicFrames = data.map(function (item) {
+          var datePart = item.date.split(" ")[0]; // "2026-07-28"
+          var parts = datePart.split("-");
+          var url = "https://epic.gsfc.nasa.gov/archive/natural/" + parts[0] + "/" + parts[1] + "/" + parts[2] +
+            "/png/" + item.image + ".png";
+          return { url: url, date: item.date };
+        });
+
+        epicLoaded = true;
+        epicIndex = epicFrames.length - 1; // la plus recente de la journee
+        els.epicSub.textContent = epicFrames.length + " images disponibles aujourd'hui (une toutes les 1-2h)";
+        showEpicFrame();
+      })
+      .catch(function (err) {
+        els.epicSub.textContent = "Erreur de chargement : " + err.message;
+      });
+  }
+
+  function showEpicFrame() {
+    if (epicFrames.length === 0) return;
+    var frame = epicFrames[epicIndex];
+    els.epicImage.src = frame.url;
+    els.epicTimestamp.textContent = frame.date + " UTC (" + (epicIndex + 1) + "/" + epicFrames.length + ")";
+  }
+
+  function stepEpic(delta) {
+    if (epicFrames.length === 0) return;
+    epicIndex = (epicIndex + delta + epicFrames.length) % epicFrames.length;
+    showEpicFrame();
+  }
+
+  function stopEpicPlay() {
+    epicPlaying = false;
+    els.epicPlay.textContent = "▶";
+    clearInterval(epicPlayTimer);
+  }
+
+  els.epicToggle.addEventListener("click", function () {
+    els.epicOverlay.classList.add("open");
+    if (!epicLoaded) loadEpic();
+  });
+
+  els.epicClose.addEventListener("click", function () {
+    els.epicOverlay.classList.remove("open");
+    stopEpicPlay();
+  });
+
+  els.epicOverlay.addEventListener("click", function (e) {
+    if (e.target === els.epicOverlay) {
+      els.epicOverlay.classList.remove("open");
+      stopEpicPlay();
+    }
+  });
+
+  els.epicPrev.addEventListener("click", function () { stopEpicPlay(); stepEpic(-1); });
+  els.epicNext.addEventListener("click", function () { stopEpicPlay(); stepEpic(1); });
+
+  els.epicPlay.addEventListener("click", function () {
+    if (epicPlaying) {
+      stopEpicPlay();
+    } else {
+      epicPlaying = true;
+      els.epicPlay.textContent = "⏸";
+      epicPlayTimer = setInterval(function () { stepEpic(1); }, 700); // enchaine les images pour voir la rotation
     }
   });
 
