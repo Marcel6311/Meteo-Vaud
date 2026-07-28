@@ -2020,6 +2020,8 @@
     });
   }
 
+  var GIBS_MIN_ZOOM = 5; // en-deca, les trous entre bandes de passage satellite deviennent trop visibles
+
   function makeGibsToggle(config) {
     var layer = null;
     var visible = false;
@@ -2043,9 +2045,22 @@
     setInterval(refresh, 24 * 60 * 60 * 1000); // 1 jour : imagerie satellite quotidienne
 
     config.button.addEventListener("click", function () {
+      if (!visible && map.getZoom() < GIBS_MIN_ZOOM) {
+        alert("Zoome d'abord sur une region precise (pays ou plus petit) : a l'echelle mondiale, cette imagerie satellite affiche des bandes vides entre les passages du satellite.");
+        return;
+      }
       visible = !visible;
       config.button.classList.toggle("active", visible);
       if (visible) { show(); } else { hide(); }
+    });
+
+    // Si l'utilisateur dezoome trop fort pendant que le calque est actif, on le masque proprement
+    map.on("zoomend", function () {
+      if (visible && map.getZoom() < GIBS_MIN_ZOOM) {
+        visible = false;
+        config.button.classList.remove("active");
+        hide();
+      }
     });
   }
 
