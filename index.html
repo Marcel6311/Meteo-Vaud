@@ -2002,7 +2002,7 @@
 
   function buildEffisLayer() {
     return L.tileLayer.wms("https://maps.effis.emergency.copernicus.eu/effis", {
-      layers: "EFFIS:BurntAreas7Days",
+      layers: "modis.ba.poly.week", // confirme via GetCapabilities : "Current Season Burned Areas" (fenetre glissante 7 jours)
       format: "image/png",
       transparent: true,
       version: "1.1.1",
