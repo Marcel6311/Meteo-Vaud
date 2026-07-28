@@ -2863,7 +2863,7 @@
   // de voir la rotation de la Terre en les enchainant.
   // -------------------------------------------------------------------
 
-  var EPIC_API_KEY = "DEMO_KEY"; // cle publique de demonstration NASA, limite basse (30/h, 50/jour) - Marcel peut creer la sienne gratuitement sur api.nasa.gov si besoin
+  // La cle API NASA vit maintenant cote backend (sources/epic.js), plus ici
   var epicFrames = []; // [{url, date}]
   var epicIndex = 0;
   var epicPlaying = false;
@@ -2874,22 +2874,16 @@
 
   function loadEpic() {
     els.epicSub.textContent = "Chargement...";
-    fetch("https://epic.gsfc.nasa.gov/api/natural/images?api_key=" + EPIC_API_KEY + "&_t=" + Date.now(), { cache: "no-store" })
+    fetch(API_BASE + "/epic?_t=" + Date.now(), { cache: "no-store" })
       .then(function (res) {
         if (!res.ok) throw new Error("HTTP " + res.status);
         return res.json();
       })
       .then(function (data) {
-        if (!data || data.length === 0) throw new Error("Aucune image disponible");
+        if (data.lastError) throw new Error(data.lastError);
+        if (!data.frames || data.frames.length === 0) throw new Error("Aucune image disponible");
 
-        epicFrames = data.map(function (item) {
-          var datePart = item.date.split(" ")[0]; // "2026-07-28"
-          var parts = datePart.split("-");
-          var url = "https://epic.gsfc.nasa.gov/archive/natural/" + parts[0] + "/" + parts[1] + "/" + parts[2] +
-            "/png/" + item.image + ".png";
-          return { url: url, date: item.date };
-        });
-
+        epicFrames = data.frames;
         epicLoaded = true;
         epicIndex = epicFrames.length - 1; // la plus recente de la journee
         els.epicSub.textContent = epicFrames.length + " images disponibles aujourd'hui (une toutes les 1-2h)";
