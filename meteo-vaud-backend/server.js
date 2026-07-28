@@ -27,6 +27,7 @@ const { getAllStations } = require("./sources/stationRegistry");
 const { fetchCapitalsList } = require("./sources/capitals");
 const { fetchAzureMapsForStations } = require("./sources/azuremaps");
 const { fetchHeatwaveForStations, TEMP_THRESHOLD_C, CONSECUTIVE_DAYS_THRESHOLD } = require("./sources/heatwave");
+const { fetchEpicFrames } = require("./sources/epic");
 
 const app = express();
 app.use(cors());
@@ -73,6 +74,7 @@ Object.keys(CAPITAL_REGIONS).forEach((region) => {
 });
 
 let heatwaveCache = { updatedAt: null, readings: [], lastError: null };
+let epicCache = { updatedAt: null, frames: [], lastError: null };
 
 function pickScope(req) {
   const scope = (req.query.scope || "vd").toLowerCase();
@@ -149,6 +151,21 @@ async function refreshHeatwave() {
   } catch (err) {
     heatwaveCache.lastError = err.message;
     console.error("[refresh:heatwave] echec :", err.message);
+  }
+}
+
+async function refreshEpic() {
+  try {
+    const frames = await fetchEpicFrames();
+    epicCache = {
+      updatedAt: new Date().toISOString(),
+      frames,
+      lastError: null
+    };
+    console.log(`[refresh:epic] ${frames.length} images recuperees (${epicCache.updatedAt})`);
+  } catch (err) {
+    epicCache.lastError = err.message;
+    console.error("[refresh:epic] echec :", err.message);
   }
 }
 
@@ -275,6 +292,16 @@ app.get("/stations/heatwave", (req, res) => {
   });
 });
 
+// GET /epic - photos NASA EPIC/DSCOVR de la Terre entiere (proxy backend car l'API NASA ne supporte pas CORS)
+app.get("/epic", (req, res) => {
+  res.json({
+    source: "NASA EPIC / DSCOVR",
+    updatedAt: epicCache.updatedAt,
+    lastError: epicCache.lastError,
+    frames: epicCache.frames
+  });
+});
+
 // GET /stations/:code?scope=vd|ch - derniere valeur pour une station precise
 app.get("/stations/:code", (req, res) => {
   const scope = pickScope(req);
@@ -325,7 +352,9 @@ app.listen(PORT, async () => {
   await refreshAll(); // premier chargement immediat au demarrage (vd + ch)
   await refreshAllCapitalRegions();
   await refreshHeatwave();
+  await refreshEpic();
   setInterval(refreshAll, DATA_REFRESH_MS);
   setInterval(refreshHeatwave, 3 * 60 * 60 * 1000); // 3h : la prevision OWM ne change pas assez vite pour justifier plus frequent
+  setInterval(refreshEpic, 60 * 60 * 1000); // 1h : cadence proche de celle des vraies prises de vue EPIC
   setInterval(refreshAllCapitalRegions, CAPITALS_REFRESH_MS);
 });
