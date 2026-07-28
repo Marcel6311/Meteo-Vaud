@@ -976,6 +976,7 @@
       <button class="rain-toggle" id="aerosolToggle">💨 AÉROSOLS</button>
       <button class="rain-toggle" id="snowToggle">❄️ NEIGE</button>
       <button class="rain-toggle" id="eonetToggle">🌎 ÉVÉNEMENTS</button>
+      <button class="rain-toggle" id="effisToggle">🔥🇪🇺 FEUX UE (7j)</button>
       <button class="rain-toggle" id="capitalsToggle">🌍 CAPITALES</button>
       <button class="rain-toggle" id="compareToggle">⚖️ COMPARAISON</button>
       <button class="rain-toggle" id="profileToggleHeader">📊 PROFIL</button>
@@ -1016,7 +1017,7 @@
   </main>
 
   <footer>
-    <span>Source: MeteoSwiss (SwissMetNet, OGD) · CC-BY · Pluie: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> · Temp. Europe: <a href="https://openweathermap.org/" target="_blank" rel="noopener">OpenWeatherMap</a> · Incendies/Satellite/Aérosols/Neige/Événements: <a href="https://www.nasa.gov/" target="_blank" rel="noopener">NASA (FIRMS, GIBS, EONET)</a></span>
+    <span>Source: MeteoSwiss (SwissMetNet, OGD) · CC-BY · Pluie: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> · Temp. Europe: <a href="https://openweathermap.org/" target="_blank" rel="noopener">OpenWeatherMap</a> · Incendies/Satellite/Aérosols/Neige/Événements: <a href="https://www.nasa.gov/" target="_blank" rel="noopener">NASA (FIRMS, GIBS, EONET)</a> · Feux UE: <a href="https://effis.jrc.ec.europa.eu/" target="_blank" rel="noopener">EFFIS/Copernicus</a></span>
     <span class="footer-refresh">
       <span id="updatedAt">—</span>
       <button id="manualRefresh" title="Rafraichir maintenant">⟳</button>
@@ -1214,6 +1215,7 @@
     aerosolToggle: document.getElementById("aerosolToggle"),
     snowToggle: document.getElementById("snowToggle"),
     eonetToggle: document.getElementById("eonetToggle"),
+    effisToggle: document.getElementById("effisToggle"),
     eonetOverlay: document.getElementById("eonetOverlay"),
     eonetClose: document.getElementById("eonetClose"),
     eonetSub: document.getElementById("eonetSub"),
@@ -1983,6 +1985,58 @@
       showFireLayer();
     } else {
       hideFireLayer();
+    }
+  });
+
+  // -------------------------------------------------------------------
+  // EFFIS (Copernicus) - zones reellement brulees en Europe, 7 derniers jours
+  // -------------------------------------------------------------------
+  // Contrairement au calque FIRMS (points chauds instantanes, mondial),
+  // EFFIS montre le vrai PERIMETRE des zones brulees, specifiquement
+  // pense pour l'Europe/Moyen-Orient/Afrique du Nord. Serveur GeoServer
+  // standard (pas besoin d'un sous-chemin special par projection comme GIBS).
+  // Gratuit, sans cle, gere par la Commission Europeenne / JRC.
+
+  var effisLayer = null;
+  var effisVisible = false;
+
+  function buildEffisLayer() {
+    return L.tileLayer.wms("https://maps.effis.emergency.copernicus.eu/effis", {
+      layers: "EFFIS:BurntAreas7Days",
+      format: "image/png",
+      transparent: true,
+      version: "1.1.1",
+      opacity: 0.8,
+      zIndex: 475, // entre la couverture radar (490) et les aerosols (470)
+      noWrap: true,
+      attribution: "EFFIS/Copernicus"
+    });
+  }
+
+  function showEffisLayer() {
+    if (!effisLayer) effisLayer = buildEffisLayer();
+    if (!map.hasLayer(effisLayer)) map.addLayer(effisLayer);
+  }
+
+  function hideEffisLayer() {
+    if (effisLayer) map.removeLayer(effisLayer);
+  }
+
+  setInterval(function () {
+    if (effisVisible) {
+      hideEffisLayer();
+      effisLayer = buildEffisLayer();
+      map.addLayer(effisLayer);
+    }
+  }, 24 * 60 * 60 * 1000); // 1 jour : la fenetre "7 derniers jours" glisse chaque jour
+
+  els.effisToggle.addEventListener("click", function () {
+    effisVisible = !effisVisible;
+    els.effisToggle.classList.toggle("active", effisVisible);
+    if (effisVisible) {
+      showEffisLayer();
+    } else {
+      hideEffisLayer();
     }
   });
 
