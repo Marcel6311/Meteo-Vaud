@@ -974,6 +974,7 @@
       <button class="rain-toggle" id="fireToggle">🔥 INCENDIES</button>
       <button class="rain-toggle" id="satelliteToggle">🛰 SATELLITE</button>
       <button class="rain-toggle" id="aerosolToggle">💨 AÉROSOLS</button>
+      <button class="rain-toggle" id="camsToggle">🌫️ PM2.5</button>
       <button class="rain-toggle" id="snowToggle">❄️ NEIGE</button>
       <button class="rain-toggle" id="eonetToggle">🌎 ÉVÉNEMENTS</button>
       <button class="rain-toggle" id="effisToggle">🔥🇪🇺 FEUX UE (7j)</button>
@@ -994,6 +995,7 @@
 
   <main>
     <div id="map">
+      <img id="camsLegendImg" alt="Légende PM2.5 (µg/m³)" style="display:none; position:absolute; bottom:12px; left:12px; z-index:1000; background:#fff; padding:4px 6px; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,0.4);" />
       <div class="rain-controls" id="rainControls">
         <button id="rainPrev">⏮</button>
         <button id="rainPlay">▶</button>
@@ -1241,6 +1243,7 @@
     snowToggle: document.getElementById("snowToggle"),
     eonetToggle: document.getElementById("eonetToggle"),
     effisToggle: document.getElementById("effisToggle"),
+    camsToggle: document.getElementById("camsToggle"),
     epicToggle: document.getElementById("epicToggle"),
     epicOverlay: document.getElementById("epicOverlay"),
     epicClose: document.getElementById("epicClose"),
@@ -2071,6 +2074,76 @@
       showEffisLayer();
     } else {
       hideEffisLayer();
+    }
+  });
+
+  // -------------------------------------------------------------------
+  // CAMS (Copernicus Atmosphere Monitoring Service, via ECMWF) - PM2.5
+  // -------------------------------------------------------------------
+  // Prevision de particules fines PM2.5, gratuit, sans cle (token=public).
+  // Attention : la couche n'est alimentee qu'a partir du run de 00 UTC,
+  // publie vers 20 UTC. Avant ca dans la journee, l'image peut etre vide
+  // ou perimee -> on rafraichit une fois par jour, en fin d'apres-midi/soir,
+  // ce qui suffit vu la cadence de production des donnees.
+
+  var camsLayer = null;
+  var camsVisible = false;
+  var CAMS_LEGEND_URL = "https://eccharts.ecmwf.int/wms/?service=wms&token=public&request=GetLegend&layers=composition_pm2p5&width=350&height=50";
+
+  function buildCamsLayer() {
+    return L.tileLayer.wms("https://eccharts.ecmwf.int/wms/", {
+      layers: "composition_pm2p5",
+      format: "image/png",
+      transparent: true,
+      version: "1.3.0",
+      token: "public",
+      opacity: 0.6,
+      zIndex: 465, // entre aerosols (470) et neige (460)
+      noWrap: true,
+      attribution: "Copernicus Atmosphere Monitoring Service (CAMS) / ECMWF"
+    });
+  }
+
+  function showCamsLayer() {
+    if (!camsLayer) camsLayer = buildCamsLayer();
+    if (!map.hasLayer(camsLayer)) map.addLayer(camsLayer);
+    showCamsLegend();
+  }
+
+  function hideCamsLayer() {
+    if (camsLayer) map.removeLayer(camsLayer);
+    hideCamsLegend();
+  }
+
+  function showCamsLegend() {
+    var img = document.getElementById("camsLegendImg");
+    if (img) {
+      img.src = CAMS_LEGEND_URL;
+      img.style.display = "block";
+    }
+  }
+
+  function hideCamsLegend() {
+    var img = document.getElementById("camsLegendImg");
+    if (img) img.style.display = "none";
+  }
+
+  setInterval(function () {
+    if (camsVisible) {
+      hideCamsLayer();
+      camsLayer = buildCamsLayer();
+      map.addLayer(camsLayer);
+      showCamsLegend();
+    }
+  }, 24 * 60 * 60 * 1000); // 1 jour : nouveau run publie chaque jour vers 20 UTC
+
+  els.camsToggle.addEventListener("click", function () {
+    camsVisible = !camsVisible;
+    els.camsToggle.classList.toggle("active", camsVisible);
+    if (camsVisible) {
+      showCamsLayer();
+    } else {
+      hideCamsLayer();
     }
   });
 
