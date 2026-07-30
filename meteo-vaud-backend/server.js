@@ -315,7 +315,7 @@ app.get("/firms", (req, res) => {
   res.json({
     source: "NASA FIRMS (VIIRS NOAA-20 + NOAA-21)",
     licence: "NASA Open Data",
-    bbox: "-25,25,55,72",
+    bbox: "mondial (6 zones continentales)",
     dayRange: 2,
     note: "FRP (Fire Radiative Power) en megawatts. Confiance : h = haute, n = nominale (basse filtree).",
     updatedAt: firmsCache.updatedAt,
