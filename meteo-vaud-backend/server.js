@@ -29,6 +29,7 @@ const { fetchAzureMapsForStations } = require("./sources/azuremaps");
 const { fetchHeatwaveForStations, TEMP_THRESHOLD_C, CONSECUTIVE_DAYS_THRESHOLD } = require("./sources/heatwave");
 const { fetchEpicFrames } = require("./sources/epic");
 const { fetchFirmsData } = require("./sources/firms");
+const { fetchApod, fetchNeo } = require("./sources/nasa");
 
 const app = express();
 app.use(cors());
@@ -77,6 +78,8 @@ Object.keys(CAPITAL_REGIONS).forEach((region) => {
 let heatwaveCache = { updatedAt: null, readings: [], lastError: null };
 let epicCache = { updatedAt: null, frames: [], lastError: null };
 let firmsCache = { updatedAt: null, detections: [], lastError: null };
+let apodCache = { updatedAt: null, apod: null, lastError: null };
+let neoCache = { updatedAt: null, asteroids: [], lastError: null };
 
 function pickScope(req) {
   const scope = (req.query.scope || "vd").toLowerCase();
@@ -183,6 +186,36 @@ async function refreshFirms() {
   } catch (err) {
     firmsCache.lastError = err.message;
     console.error("[refresh:firms] echec :", err.message);
+  }
+}
+
+async function refreshApod() {
+  try {
+    const apod = await fetchApod();
+    apodCache = {
+      updatedAt: new Date().toISOString(),
+      apod,
+      lastError: null
+    };
+    console.log(`[refresh:apod] "${apod.title}" (${apodCache.updatedAt})`);
+  } catch (err) {
+    apodCache.lastError = err.message;
+    console.error("[refresh:apod] echec :", err.message);
+  }
+}
+
+async function refreshNeo() {
+  try {
+    const asteroids = await fetchNeo();
+    neoCache = {
+      updatedAt: new Date().toISOString(),
+      asteroids,
+      lastError: null
+    };
+    console.log(`[refresh:neo] ${asteroids.length} asteroides recuperes (${neoCache.updatedAt})`);
+  } catch (err) {
+    neoCache.lastError = err.message;
+    console.error("[refresh:neo] echec :", err.message);
   }
 }
 
@@ -325,6 +358,30 @@ app.get("/firms", (req, res) => {
   });
 });
 
+// GET /apod - Photo astronomique du jour (NASA APOD)
+// Rafraichi toutes les 6h (la photo change une fois par jour, vers minuit EST).
+app.get("/apod", (req, res) => {
+  res.json({
+    source: "NASA Astronomy Picture of the Day",
+    updatedAt: apodCache.updatedAt,
+    lastError: apodCache.lastError,
+    apod: apodCache.apod
+  });
+});
+
+// GET /neo - Asteroides proches de la Terre (NASA NeoWs), 7 jours
+// Rafraichi toutes les 6h.
+app.get("/neo", (req, res) => {
+  res.json({
+    source: "NASA Near Earth Object Web Service (NeoWs)",
+    note: "Asteroides tries par distance minimale. miss_distance_lunar = distance en unites lunaires (1 = distance Terre-Lune).",
+    updatedAt: neoCache.updatedAt,
+    lastError: neoCache.lastError,
+    count: neoCache.asteroids.length,
+    asteroids: neoCache.asteroids
+  });
+});
+
 // GET /epic - photos NASA EPIC/DSCOVR de la Terre entiere (proxy backend car l'API NASA ne supporte pas CORS)
 app.get("/epic", (req, res) => {
   res.json({
@@ -387,8 +444,12 @@ app.listen(PORT, async () => {
   await refreshHeatwave();
   await refreshEpic();
   await refreshFirms();
+  await refreshApod();
+  await refreshNeo();
   setInterval(refreshAll, DATA_REFRESH_MS);
   setInterval(refreshFirms, 2 * 60 * 60 * 1000); // 2h : le satellite passe ~2 fois/jour, pas besoin de plus
+  setInterval(refreshApod, 6 * 60 * 60 * 1000); // 6h : la photo change 1x/jour
+  setInterval(refreshNeo, 6 * 60 * 60 * 1000); // 6h : les donnees NEO bougent lentement
   setInterval(refreshHeatwave, 3 * 60 * 60 * 1000); // 3h : la prevision OWM ne change pas assez vite pour justifier plus frequent
   setInterval(refreshEpic, 60 * 60 * 1000); // 1h : cadence proche de celle des vraies prises de vue EPIC
   setInterval(refreshAllCapitalRegions, CAPITALS_REFRESH_MS);
