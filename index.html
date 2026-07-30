@@ -2009,16 +2009,38 @@
     return "Faible";
   }
 
-  function firePopupHtml(d) {
+  function firePopupHtml(d, locationName) {
     var dateStr = d.acq_date + " " + (d.acq_time.length <= 2 ? "00:" + d.acq_time.padStart(2, "0") : d.acq_time.slice(0, -2).padStart(2, "0") + ":" + d.acq_time.slice(-2)) + " UTC";
     var dn = d.daynight === "D" ? "☀️ Jour" : "🌙 Nuit";
     var conf = d.confidence === "h" ? "Haute" : "Nominale";
+    var loc = locationName || "<em>localisation…</em>";
     return "<b>🔥 Incendie détecté</b><br>" +
+      "<span id='fire-loc'>" + loc + "</span><br>" +
       "<b>FRP : " + d.frp.toFixed(1) + " MW</b> (" + frpLabel(d.frp) + ")<br>" +
       "Confiance : " + conf + "<br>" +
       dateStr + " · " + dn + "<br>" +
-      "<small>" + d.lat.toFixed(4) + ", " + d.lon.toFixed(4) + "</small><br>" +
-      "<small>Source : " + d.source.replace("_NRT", "") + "</small>";
+      "<small>" + d.lat.toFixed(4) + ", " + d.lon.toFixed(4) + " · " + d.source.replace("_NRT", "") + "</small>";
+  }
+
+  function reverseGeocode(lat, lon, callback) {
+    fetch("https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon + "&zoom=10&accept-language=fr")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var parts = [];
+        if (data.address) {
+          var a = data.address;
+          var place = a.village || a.town || a.city || a.municipality || a.hamlet || "";
+          var county = a.county || a.state_district || "";
+          var state = a.state || "";
+          var country = a.country || "";
+          if (place) parts.push(place);
+          if (county && county !== place) parts.push(county);
+          if (state && state !== county) parts.push(state);
+          if (country) parts.push(country);
+        }
+        callback(parts.length > 0 ? "📍 " + parts.join(", ") : "");
+      })
+      .catch(function () { callback(""); });
   }
 
   function renderFireMarkers() {
@@ -2031,10 +2053,15 @@
         fillOpacity: 0.85,
         color: "#10141A",
         weight: 1,
-        renderer: fireRenderer, // canvas : performant avec 8000+ points et zone de clic elargie
+        renderer: fireRenderer,
         pane: "markerPane"
       }).addTo(map);
       m.bindPopup(firePopupHtml(d));
+      m.on("click", function () {
+        reverseGeocode(d.lat, d.lon, function (name) {
+          if (name) m.setPopupContent(firePopupHtml(d, name));
+        });
+      });
       fireMarkers.push(m);
     });
   }
