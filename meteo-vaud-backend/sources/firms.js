@@ -8,14 +8,25 @@
 // la couverture spatiale et temporelle. Les detections a basse confiance
 // sont filtrees pour eviter les faux positifs (reflets solaires, sol chaud).
 //
+// Couverture mondiale, decoupee en 6 zones continentales pour rester dans
+// les limites de taille de reponse de l'API FIRMS.
+//
 // La cle API (MAP_KEY) est lue depuis la variable d'environnement FIRMS_MAP_KEY.
-// Limite : 5000 transactions / 10 min (largement suffisant pour un refresh
-// toutes les 2h avec 2 appels).
+// Limite : 5000 transactions / 10 min. Avec 6 zones x 2 satellites = 12 appels
+// toutes les 2h, on est tres loin du plafond.
 
 const https = require("https");
 
-// Europe elargie : couvre du Portugal a la Turquie, de l'Islande au Sahara nord
-var BBOX = "-25,25,55,72";
+// Zones continentales (ouest,sud,est,nord) — ensemble elles couvrent le monde
+var ZONES = {
+  europe:         { bbox: "-25,25,55,72",    label: "Europe" },
+  north_america:  { bbox: "-170,10,-50,75",  label: "Amerique du Nord" },
+  south_america:  { bbox: "-85,-60,-30,15",  label: "Amerique du Sud" },
+  africa:         { bbox: "-20,-40,55,40",    label: "Afrique" },
+  asia:           { bbox: "25,-10,180,75",    label: "Asie" },
+  oceania:        { bbox: "100,-50,180,-5",   label: "Oceanie" }
+};
+
 var DAY_RANGE = 2; // 2 jours : permet de voir la propagation (hier vs aujourd'hui)
 var SOURCES = ["VIIRS_NOAA20_NRT", "VIIRS_NOAA21_NRT"];
 
@@ -81,18 +92,28 @@ async function fetchFirmsData() {
   if (!mapKey) throw new Error("FIRMS_MAP_KEY non configuree dans les variables d'environnement");
 
   var allDetections = [];
+  var zoneKeys = Object.keys(ZONES);
 
-  for (var i = 0; i < SOURCES.length; i++) {
-    var url = "https://firms.modaps.eosdis.nasa.gov/api/area/csv/" +
-      mapKey + "/" + SOURCES[i] + "/" + BBOX + "/" + DAY_RANGE;
+  for (var z = 0; z < zoneKeys.length; z++) {
+    var zone = ZONES[zoneKeys[z]];
+    for (var i = 0; i < SOURCES.length; i++) {
+      var url = "https://firms.modaps.eosdis.nasa.gov/api/area/csv/" +
+        mapKey + "/" + SOURCES[i] + "/" + zone.bbox + "/" + DAY_RANGE;
 
-    console.log("[firms] appel " + SOURCES[i] + "...");
-    var csv = await httpGet(url);
-    var detections = parseCsv(csv, SOURCES[i]);
-    allDetections = allDetections.concat(detections);
-    console.log("[firms] " + SOURCES[i] + " : " + detections.length + " detections (confiance nominale ou haute)");
+      console.log("[firms] " + zone.label + " / " + SOURCES[i] + "...");
+      try {
+        var csv = await httpGet(url);
+        var detections = parseCsv(csv, SOURCES[i]);
+        allDetections = allDetections.concat(detections);
+        console.log("[firms] " + zone.label + " / " + SOURCES[i] + " : " + detections.length + " detections");
+      } catch (err) {
+        // En cas d'echec sur une zone, on continue les autres plutot que de tout planter
+        console.error("[firms] echec " + zone.label + " / " + SOURCES[i] + " : " + err.message);
+      }
+    }
   }
 
+  console.log("[firms] total mondial : " + allDetections.length + " detections");
   return allDetections;
 }
 
