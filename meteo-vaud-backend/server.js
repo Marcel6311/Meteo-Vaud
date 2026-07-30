@@ -28,6 +28,7 @@ const { fetchCapitalsList } = require("./sources/capitals");
 const { fetchAzureMapsForStations } = require("./sources/azuremaps");
 const { fetchHeatwaveForStations, TEMP_THRESHOLD_C, CONSECUTIVE_DAYS_THRESHOLD } = require("./sources/heatwave");
 const { fetchEpicFrames } = require("./sources/epic");
+const { fetchFirmsData } = require("./sources/firms");
 
 const app = express();
 app.use(cors());
@@ -75,6 +76,7 @@ Object.keys(CAPITAL_REGIONS).forEach((region) => {
 
 let heatwaveCache = { updatedAt: null, readings: [], lastError: null };
 let epicCache = { updatedAt: null, frames: [], lastError: null };
+let firmsCache = { updatedAt: null, detections: [], lastError: null };
 
 function pickScope(req) {
   const scope = (req.query.scope || "vd").toLowerCase();
@@ -166,6 +168,21 @@ async function refreshEpic() {
   } catch (err) {
     epicCache.lastError = err.message;
     console.error("[refresh:epic] echec :", err.message);
+  }
+}
+
+async function refreshFirms() {
+  try {
+    const detections = await fetchFirmsData();
+    firmsCache = {
+      updatedAt: new Date().toISOString(),
+      detections,
+      lastError: null
+    };
+    console.log(`[refresh:firms] ${detections.length} detections recuperees (${firmsCache.updatedAt})`);
+  } catch (err) {
+    firmsCache.lastError = err.message;
+    console.error("[refresh:firms] echec :", err.message);
   }
 }
 
@@ -292,6 +309,22 @@ app.get("/stations/heatwave", (req, res) => {
   });
 });
 
+// GET /firms - detections d'incendies actifs avec FRP (NASA FIRMS)
+// Cache global Europe, rafraichi toutes les 2h.
+app.get("/firms", (req, res) => {
+  res.json({
+    source: "NASA FIRMS (VIIRS NOAA-20 + NOAA-21)",
+    licence: "NASA Open Data",
+    bbox: "-25,25,55,72",
+    dayRange: 2,
+    note: "FRP (Fire Radiative Power) en megawatts. Confiance : h = haute, n = nominale (basse filtree).",
+    updatedAt: firmsCache.updatedAt,
+    lastError: firmsCache.lastError,
+    count: firmsCache.detections.length,
+    detections: firmsCache.detections
+  });
+});
+
 // GET /epic - photos NASA EPIC/DSCOVR de la Terre entiere (proxy backend car l'API NASA ne supporte pas CORS)
 app.get("/epic", (req, res) => {
   res.json({
@@ -353,7 +386,9 @@ app.listen(PORT, async () => {
   await refreshAllCapitalRegions();
   await refreshHeatwave();
   await refreshEpic();
+  await refreshFirms();
   setInterval(refreshAll, DATA_REFRESH_MS);
+  setInterval(refreshFirms, 2 * 60 * 60 * 1000); // 2h : le satellite passe ~2 fois/jour, pas besoin de plus
   setInterval(refreshHeatwave, 3 * 60 * 60 * 1000); // 3h : la prevision OWM ne change pas assez vite pour justifier plus frequent
   setInterval(refreshEpic, 60 * 60 * 1000); // 1h : cadence proche de celle des vraies prises de vue EPIC
   setInterval(refreshAllCapitalRegions, CAPITALS_REFRESH_MS);
