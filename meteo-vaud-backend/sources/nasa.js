@@ -8,8 +8,9 @@
 // Limite : 1000 requetes/heure (largement suffisant).
 //
 // Retry : 3 tentatives avec delai croissant (2s, 5s, 10s) en cas d'echec.
-// Traduction : si ANTHROPIC_API_KEY est configuree, le titre et l'explication
-// APOD sont traduits en francais via Claude. Sinon, texte original en anglais.
+// Traduction : le titre et l'explication APOD sont traduits en francais
+// via Google Translate (gratuit, sans cle). Si la traduction echoue,
+// le texte original en anglais est conserve.
 
 const https = require("https");
 
@@ -59,73 +60,48 @@ async function httpGetWithRetry(url, maxRetries) {
 // Traduit un texte en francais. Si la cle ANTHROPIC_API_KEY
 // n'est pas configuree, renvoie le texte original.
 
-function httpPost(hostname, path, headers, body) {
+function googleTranslate(text) {
   return new Promise(function (resolve, reject) {
-    var options = {
-      hostname: hostname,
-      path: path,
-      method: "POST",
-      headers: headers
-    };
-    var req = https.request(options, function (res) {
+    var encoded = encodeURIComponent(text);
+    var url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=fr&dt=t&q=" + encoded;
+
+    https.get(url, function (res) {
       var data = "";
       res.on("data", function (chunk) { data += chunk; });
       res.on("end", function () {
         if (res.statusCode !== 200) {
-          reject(new Error("Anthropic HTTP " + res.statusCode + ": " + data.slice(0, 300)));
-        } else {
-          resolve(data);
+          reject(new Error("Google Translate HTTP " + res.statusCode));
+          return;
+        }
+        try {
+          var parsed = JSON.parse(data);
+          // La reponse est un tableau de tableaux : [[["traduction","original",...],...],...]
+          var translated = "";
+          if (parsed && parsed[0]) {
+            parsed[0].forEach(function (segment) {
+              if (segment && segment[0]) translated += segment[0];
+            });
+          }
+          resolve(translated || text);
+        } catch (e) {
+          reject(e);
         }
       });
-    });
-    req.on("error", reject);
-    req.write(body);
-    req.end();
+    }).on("error", reject);
   });
 }
 
 async function translateToFrench(title, explanation) {
-  var apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    console.log("[nasa] ANTHROPIC_API_KEY non configuree — texte APOD en anglais");
-    return { title: title, explanation: explanation };
-  }
-
   try {
-    var body = JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1500,
-      messages: [{
-        role: "user",
-        content: "Traduis en français le titre et le texte suivants (astronomie). " +
-          "Réponds UNIQUEMENT au format JSON : {\"title\": \"...\", \"explanation\": \"...\"}. " +
-          "Pas de markdown, pas de backticks, juste le JSON.\n\n" +
-          "Titre: " + title + "\n\nTexte: " + explanation
-      }]
-    });
-
-    var raw = await httpPost("api.anthropic.com", "/v1/messages", {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "Content-Length": Buffer.byteLength(body)
-    }, body);
-
-    var response = JSON.parse(raw);
-    var text = response.content && response.content[0] && response.content[0].text;
-    if (!text) throw new Error("Reponse vide");
-
-    // Nettoyer d'eventuels backticks markdown
-    text = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-    var translated = JSON.parse(text);
-
-    console.log("[nasa] APOD traduit en francais : \"" + translated.title + "\"");
+    var translatedTitle = await googleTranslate(title);
+    var translatedExplanation = await googleTranslate(explanation);
+    console.log("[nasa] APOD traduit en francais : \"" + translatedTitle.slice(0, 60) + "...\"");
     return {
-      title: translated.title || title,
-      explanation: translated.explanation || explanation
+      title: translatedTitle,
+      explanation: translatedExplanation
     };
   } catch (err) {
-    console.error("[nasa] echec traduction : " + err.message + " — texte original conserve");
+    console.error("[nasa] echec traduction Google : " + err.message + " — texte original conserve");
     return { title: title, explanation: explanation };
   }
 }
