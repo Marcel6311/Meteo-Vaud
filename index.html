@@ -1986,6 +1986,7 @@
   var fireVisible = false;
   var firmsData = null;
   var FIRE_REFRESH_MS = 2 * 60 * 60 * 1000; // 2h
+  var fireRenderer = L.canvas({ padding: 0.5, tolerance: 12 }); // tolerance = zone cliquable elargie autour de chaque point
 
   function frpColor(frp) {
     if (frp >= 500) return "#9B30FF"; // violet — catastrophique
@@ -2030,7 +2031,8 @@
         fillOpacity: 0.85,
         color: "#10141A",
         weight: 1,
-        pane: "markerPane" // au-dessus des calques raster
+        renderer: fireRenderer, // canvas : performant avec 8000+ points et zone de clic elargie
+        pane: "markerPane"
       }).addTo(map);
       m.bindPopup(firePopupHtml(d));
       fireMarkers.push(m);
