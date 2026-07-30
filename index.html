@@ -1971,57 +1971,101 @@
   });
 
   // -------------------------------------------------------------------
-  // Calque incendies actifs (NASA FIRMS via GIBS - gratuit, sans cle)
+  // Calque incendies actifs (NASA FIRMS via backend /firms - avec FRP)
   // -------------------------------------------------------------------
-  // Detections satellite VIIRS (~12h de delai), pas un temps reel comme
-  // le radar pluie. Rafraichi une fois par jour, cadence suffisante vu
-  // la nature de la donnee source.
+  // Detections satellite VIIRS (NOAA-20 + NOAA-21), 2 jours de donnees,
+  // avec Fire Radiative Power (FRP) en megawatts. Chaque point est
+  // colorie et dimensionne selon l'intensite du feu :
+  //   jaune/petit  = faible (< 10 MW)
+  //   orange/moyen = modere (10-100 MW)
+  //   rouge/gros   = majeur (100-500 MW)
+  //   violet/tres gros = catastrophique (> 500 MW)
+  // Cache backend rafraichi toutes les 2h, frontend toutes les 2h aussi.
 
-  var fireLayer = null;
+  var fireMarkers = [];
   var fireVisible = false;
-  var FIRE_REFRESH_MS = 24 * 60 * 60 * 1000; // 1 jour
+  var firmsData = null;
+  var FIRE_REFRESH_MS = 2 * 60 * 60 * 1000; // 2h
 
-  function buildFireLayer() {
-    return L.tileLayer.wms("https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi", {
-      layers: "VIIRS_NOAA20_Thermal_Anomalies_375m_All",
-      format: "image/png",
-      transparent: true,
-      version: "1.1.1",
-      time: "default",
-      opacity: 0.85,
-      zIndex: 480, // sous le radar pluie (500), au-dessus de la couverture radar (490)
-      attribution: "NASA FIRMS/GIBS",
-      noWrap: true
+  function frpColor(frp) {
+    if (frp >= 500) return "#9B30FF"; // violet — catastrophique
+    if (frp >= 100) return "#FF2020"; // rouge — majeur
+    if (frp >= 10) return "#FF8C00";  // orange — modere
+    return "#FFD700";                  // jaune — faible
+  }
+
+  function frpRadius(frp) {
+    if (frp >= 500) return 10;
+    if (frp >= 100) return 7;
+    if (frp >= 10) return 5;
+    return 3;
+  }
+
+  function frpLabel(frp) {
+    if (frp >= 500) return "Catastrophique";
+    if (frp >= 100) return "Majeur";
+    if (frp >= 10) return "Modéré";
+    return "Faible";
+  }
+
+  function firePopupHtml(d) {
+    var dateStr = d.acq_date + " " + (d.acq_time.length <= 2 ? "00:" + d.acq_time.padStart(2, "0") : d.acq_time.slice(0, -2).padStart(2, "0") + ":" + d.acq_time.slice(-2)) + " UTC";
+    var dn = d.daynight === "D" ? "☀️ Jour" : "🌙 Nuit";
+    var conf = d.confidence === "h" ? "Haute" : "Nominale";
+    return "<b>🔥 Incendie détecté</b><br>" +
+      "<b>FRP : " + d.frp.toFixed(1) + " MW</b> (" + frpLabel(d.frp) + ")<br>" +
+      "Confiance : " + conf + "<br>" +
+      dateStr + " · " + dn + "<br>" +
+      "<small>" + d.lat.toFixed(4) + ", " + d.lon.toFixed(4) + "</small><br>" +
+      "<small>Source : " + d.source.replace("_NRT", "") + "</small>";
+  }
+
+  function renderFireMarkers() {
+    clearFireMarkers();
+    if (!firmsData || !firmsData.detections) return;
+    firmsData.detections.forEach(function (d) {
+      var m = L.circleMarker([d.lat, d.lon], {
+        radius: frpRadius(d.frp),
+        fillColor: frpColor(d.frp),
+        fillOpacity: 0.85,
+        color: "#10141A",
+        weight: 1,
+        pane: "markerPane" // au-dessus des calques raster
+      }).addTo(map);
+      m.bindPopup(firePopupHtml(d));
+      fireMarkers.push(m);
     });
   }
 
-  function showFireLayer() {
-    if (!fireLayer) fireLayer = buildFireLayer();
-    if (!map.hasLayer(fireLayer)) map.addLayer(fireLayer);
+  function clearFireMarkers() {
+    fireMarkers.forEach(function (m) { map.removeLayer(m); });
+    fireMarkers = [];
   }
 
-  function hideFireLayer() {
-    if (fireLayer) map.removeLayer(fireLayer);
+  function fetchFirmsAndRender() {
+    fetch(API_BASE + "/firms", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        firmsData = data;
+        if (fireVisible) renderFireMarkers();
+      })
+      .catch(function (err) {
+        console.error("[firms] echec :", err);
+      });
   }
 
-  function refreshFireLayer() {
-    if (fireVisible && fireLayer) {
-      // Reconstruit le calque pour forcer un nouveau TIME=default (nouvelle journee de detections)
-      hideFireLayer();
-      fireLayer = buildFireLayer();
-      map.addLayer(fireLayer);
-    }
-  }
-
-  setInterval(refreshFireLayer, FIRE_REFRESH_MS);
+  // Premier chargement au demarrage (les donnees seront pretes quand
+  // l'utilisateur appuiera sur le bouton)
+  fetchFirmsAndRender();
+  setInterval(fetchFirmsAndRender, FIRE_REFRESH_MS);
 
   els.fireToggle.addEventListener("click", function () {
     fireVisible = !fireVisible;
     els.fireToggle.classList.toggle("active", fireVisible);
     if (fireVisible) {
-      showFireLayer();
+      if (firmsData) renderFireMarkers();
     } else {
-      hideFireLayer();
+      clearFireMarkers();
     }
   });
 
