@@ -2017,7 +2017,7 @@
     return "<b>🔥 Incendie détecté</b><br>" +
       "<span id='fire-loc'>" + loc + "</span><br>" +
       "<b>FRP : " + d.frp.toFixed(1) + " MW</b> (" + frpLabel(d.frp) + ")<br>" +
-      "Confiance : " + conf + "<br>" +
+      "Confiance : " + conf + " · " + ageLabel(d.acq_date) + "<br>" +
       dateStr + " · " + dn + "<br>" +
       "<small>" + d.lat.toFixed(4) + ", " + d.lon.toFixed(4) + " · " + d.source.replace("_NRT", "") + "</small>";
   }
@@ -2043,6 +2043,31 @@
       .catch(function () { callback(""); });
   }
 
+  // Opacite selon l'age de la detection : plus c'est recent, plus c'est visible
+  function frpOpacity(acqDate) {
+    var today = new Date();
+    var todayStr = today.toISOString().slice(0, 10); // "2026-07-30"
+    var yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    var yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+    if (acqDate === todayStr) return 0.9;    // J-0 : bien visible
+    if (acqDate === yesterdayStr) return 0.5; // J-1 : semi-transparent
+    return 0.25;                              // J-2+ : tres pale
+  }
+
+  function ageLabel(acqDate) {
+    var today = new Date();
+    var todayStr = today.toISOString().slice(0, 10);
+    var yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    var yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+    if (acqDate === todayStr) return "Aujourd'hui";
+    if (acqDate === yesterdayStr) return "Hier";
+    return "J-2";
+  }
+
   function renderFireMarkers() {
     clearFireMarkers();
     if (!firmsData || !firmsData.detections) return;
@@ -2050,7 +2075,7 @@
       var m = L.circleMarker([d.lat, d.lon], {
         radius: frpRadius(d.frp),
         fillColor: frpColor(d.frp),
-        fillOpacity: 0.85,
+        fillOpacity: frpOpacity(d.acq_date),
         color: "#10141A",
         weight: 1,
         renderer: fireRenderer,
