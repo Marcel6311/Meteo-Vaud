@@ -6,8 +6,16 @@
 //
 // La cle API est lue depuis la variable d'environnement NASA_API_KEY.
 // Limite : 1000 requetes/heure (largement suffisant).
+//
+// Retry : 3 tentatives avec delai croissant (2s, 5s, 10s) en cas d'echec.
+// Traduction : si ANTHROPIC_API_KEY est configuree, le titre et l'explication
+// APOD sont traduits en francais via Claude. Sinon, texte original en anglais.
 
 const https = require("https");
+
+// -------------------------------------------------------
+// HTTP avec retry
+// -------------------------------------------------------
 
 function httpGet(url) {
   return new Promise(function (resolve, reject) {
@@ -25,23 +33,123 @@ function httpGet(url) {
   });
 }
 
+function sleep(ms) {
+  return new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
+
+async function httpGetWithRetry(url, maxRetries) {
+  var delays = [2000, 5000, 10000]; // 2s, 5s, 10s
+  var retries = maxRetries || 3;
+
+  for (var attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await httpGet(url);
+    } catch (err) {
+      if (attempt === retries) throw err;
+      var delay = delays[attempt] || 10000;
+      console.log("[nasa] echec tentative " + (attempt + 1) + "/" + (retries + 1) + " : " + err.message + " — retry dans " + (delay / 1000) + "s");
+      await sleep(delay);
+    }
+  }
+}
+
+// -------------------------------------------------------
+// Traduction via Claude (Anthropic API)
+// -------------------------------------------------------
+// Traduit un texte en francais. Si la cle ANTHROPIC_API_KEY
+// n'est pas configuree, renvoie le texte original.
+
+function httpPost(hostname, path, headers, body) {
+  return new Promise(function (resolve, reject) {
+    var options = {
+      hostname: hostname,
+      path: path,
+      method: "POST",
+      headers: headers
+    };
+    var req = https.request(options, function (res) {
+      var data = "";
+      res.on("data", function (chunk) { data += chunk; });
+      res.on("end", function () {
+        if (res.statusCode !== 200) {
+          reject(new Error("Anthropic HTTP " + res.statusCode + ": " + data.slice(0, 300)));
+        } else {
+          resolve(data);
+        }
+      });
+    });
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+async function translateToFrench(title, explanation) {
+  var apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    console.log("[nasa] ANTHROPIC_API_KEY non configuree — texte APOD en anglais");
+    return { title: title, explanation: explanation };
+  }
+
+  try {
+    var body = JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1500,
+      messages: [{
+        role: "user",
+        content: "Traduis en français le titre et le texte suivants (astronomie). " +
+          "Réponds UNIQUEMENT au format JSON : {\"title\": \"...\", \"explanation\": \"...\"}. " +
+          "Pas de markdown, pas de backticks, juste le JSON.\n\n" +
+          "Titre: " + title + "\n\nTexte: " + explanation
+      }]
+    });
+
+    var raw = await httpPost("api.anthropic.com", "/v1/messages", {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "Content-Length": Buffer.byteLength(body)
+    }, body);
+
+    var response = JSON.parse(raw);
+    var text = response.content && response.content[0] && response.content[0].text;
+    if (!text) throw new Error("Reponse vide");
+
+    // Nettoyer d'eventuels backticks markdown
+    text = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    var translated = JSON.parse(text);
+
+    console.log("[nasa] APOD traduit en francais : \"" + translated.title + "\"");
+    return {
+      title: translated.title || title,
+      explanation: translated.explanation || explanation
+    };
+  } catch (err) {
+    console.error("[nasa] echec traduction : " + err.message + " — texte original conserve");
+    return { title: title, explanation: explanation };
+  }
+}
+
 // -------------------------------------------------------
 // APOD - Astronomy Picture of the Day
 // -------------------------------------------------------
-// Renvoie un objet avec : title, explanation, url, hdurl,
-// media_type ("image" ou "video"), date, copyright (si applicable).
 
 async function fetchApod() {
   var apiKey = process.env.NASA_API_KEY;
   if (!apiKey) throw new Error("NASA_API_KEY non configuree");
 
   var url = "https://api.nasa.gov/planetary/apod?api_key=" + apiKey;
-  var raw = await httpGet(url);
+  var raw = await httpGetWithRetry(url, 3);
   var data = JSON.parse(raw);
 
+  // Traduire titre et explication en francais
+  var translated = await translateToFrench(data.title || "", data.explanation || "");
+
   return {
-    title: data.title || "",
-    explanation: data.explanation || "",
+    title: translated.title,
+    title_original: data.title || "",
+    explanation: translated.explanation,
+    explanation_original: data.explanation || "",
     url: data.url || "",
     hdurl: data.hdurl || "",
     media_type: data.media_type || "image",
@@ -53,11 +161,6 @@ async function fetchApod() {
 // -------------------------------------------------------
 // NEO - Near Earth Objects (asteroides, 7 jours)
 // -------------------------------------------------------
-// Renvoie un tableau d'asteroides tries par distance minimale
-// (les plus proches en premier), avec :
-//   name, id, diameter_min_km, diameter_max_km,
-//   is_hazardous, close_approach_date, velocity_kmh,
-//   miss_distance_km, miss_distance_lunar
 
 async function fetchNeo() {
   var apiKey = process.env.NASA_API_KEY;
@@ -70,7 +173,7 @@ async function fetchNeo() {
   var url = "https://api.nasa.gov/neo/rest/v1/feed?start_date=" + startDate +
     "&end_date=" + endDate + "&api_key=" + apiKey;
 
-  var raw = await httpGet(url);
+  var raw = await httpGetWithRetry(url, 3);
   var data = JSON.parse(raw);
 
   var asteroids = [];
