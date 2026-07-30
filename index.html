@@ -3309,22 +3309,45 @@
   }
 
   // Suggestions de recherche cliquables
+  // Chaque entree : [label affiche, requete reelle]
   var jwstSuggestions = [
-    "Carina Nebula", "Pillars of Creation", "Deep Field", "Orion Nebula",
-    "Saturn", "Jupiter", "Mars", "Andromeda", "Ring Nebula", "Eagle Nebula",
-    "Crab Nebula", "Helix Nebula", "Tarantula Nebula", "Neptune",
-    "Phantom Galaxy", "Cartwheel Galaxy", "Black Hole", "Exoplanet",
-    "Supernova", "Milky Way", "Pluto", "Moon", "Sun", "Hubble"
+    ["Carina Nebula", "Carina Nebula NIRCam"],
+    ["Pillars of Creation", "Pillars of Creation Webb"],
+    ["Deep Field", "Webb deep field galaxy"],
+    ["Orion Nebula", "Orion Nebula infrared"],
+    ["Saturne", "Saturn planet Cassini"],
+    ["Jupiter", "Jupiter planet atmosphere Juno"],
+    ["Mars surface", "Mars surface rover"],
+    ["Andromède", "Andromeda galaxy Hubble"],
+    ["Ring Nebula", "Ring Nebula Webb NIRCam"],
+    ["Eagle Nebula", "Eagle Nebula Hubble"],
+    ["Crab Nebula", "Crab Nebula Webb"],
+    ["Helix Nebula", "Helix Nebula Webb"],
+    ["Tarantula Nebula", "Tarantula Nebula Webb"],
+    ["Neptune", "Neptune planet Voyager Webb"],
+    ["Phantom Galaxy", "Phantom Galaxy Webb MIRI"],
+    ["Cartwheel Galaxy", "Cartwheel Galaxy Webb"],
+    ["Trou noir", "black hole NASA accretion"],
+    ["Exoplanète", "exoplanet atmosphere Webb spectrum"],
+    ["Supernova", "supernova remnant Hubble Webb"],
+    ["Voie lactée", "Milky Way center infrared"],
+    ["Pluton", "Pluto planet New Horizons surface"],
+    ["Lune", "Moon lunar surface NASA"],
+    ["Soleil", "Sun solar flare NASA SDO"],
+    ["Terre", "Earth planet space ISS"],
+    ["Hubble", "Hubble deep field galaxy nebula"]
   ];
   (function () {
     var container = document.getElementById("jwstSuggestions");
-    jwstSuggestions.forEach(function (term) {
+    jwstSuggestions.forEach(function (item) {
+      var label = item[0];
+      var query = item[1];
       var btn = document.createElement("span");
-      btn.textContent = term;
+      btn.textContent = label;
       btn.style.cssText = "cursor:pointer; padding:4px 10px; border-radius:12px; background:#1a1f2a; border:1px solid var(--hairline); font-size:11px; color:var(--text-dim); white-space:nowrap;";
       btn.addEventListener("click", function () {
-        document.getElementById("jwstSearch").value = term;
-        searchJwstImages(term);
+        document.getElementById("jwstSearch").value = label;
+        searchJwstImages(query);
       });
       btn.addEventListener("mouseenter", function () { btn.style.borderColor = "var(--amber)"; btn.style.color = "#fff"; });
       btn.addEventListener("mouseleave", function () { btn.style.borderColor = "var(--hairline)"; btn.style.color = "var(--text-dim)"; });
