@@ -1214,12 +1214,16 @@
 
     <!-- JWST Gallery -->
     <div style="padding: 22px; border-top: 1px solid var(--hairline);">
-      <h3 style="margin: 0 0 10px 0; color: var(--amber); font-size: 14px;">🔭 Dernières images — James Webb Space Telescope</h3>
+      <h3 style="margin: 0 0 10px 0; color: var(--amber); font-size: 14px;">🔭 Images — James Webb Space Telescope</h3>
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <input id="jwstSearch" type="text" placeholder="Rechercher… (ex: Carina, Saturn, Orion, galaxy)" style="flex:1; padding:8px 12px; border-radius:6px; border:1px solid var(--hairline); background:#1a1f2a; color:#fff; font-size:13px;">
+        <button id="jwstSearchBtn" class="rain-toggle" style="padding:8px 14px; font-size:13px;">🔍</button>
+      </div>
       <div id="jwstGallery" style="font-size: 12px;">Chargement...</div>
     </div>
 
     <div class="hrecord" style="padding: 8px 22px; color: var(--text-faint); font-size: 10px; border-top: 1px solid var(--hairline);">
-      NASA Astronomy Picture of the Day (APOD) · NASA Near Earth Object Web Service (NeoWs) · NASA Image Library (JWST)
+      NASA Astronomy Picture of the Day (APOD) · NASA Near Earth Object Web Service (NeoWs) · NASA Image Library (JWST) · NASA Image Library (JWST)
     </div>
   </div>
 </div>
@@ -3239,23 +3243,80 @@
           document.getElementById("jwstGallery").innerHTML = "<em>Aucune image disponible.</em>";
           return;
         }
-
-        var html = '<div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">';
-        data.images.forEach(function (img) {
-          html += '<div style="cursor:pointer; border-radius:8px; overflow:hidden; background:#1a1f2a;" onclick="window.open(\'' + img.image + '\',\'_blank\')">';
-          html += '<img src="' + img.thumb + '" alt="' + img.title.replace(/"/g, '') + '" style="width:100%; height:140px; object-fit:cover; display:block;" loading="lazy">';
-          html += '<div style="padding:8px;">';
-          html += '<div style="font-weight:bold; font-size:12px; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + img.title.replace(/"/g, '') + '">' + img.title + '</div>';
-          html += '<div style="font-size:10px; color:var(--text-faint);">' + img.date + (img.center ? ' · ' + img.center : '') + '</div>';
-          html += '</div></div>';
-        });
-        html += '</div>';
-
-        document.getElementById("jwstGallery").innerHTML = html;
+        renderJwstGallery(data.images);
       })
       .catch(function () {
         document.getElementById("jwstGallery").innerHTML = "<em>Erreur de chargement des images JWST.</em>";
       });
+  }
+
+  function renderJwstGallery(images) {
+    var html = '<div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">';
+    images.forEach(function (img) {
+      var title = (img.title || "").replace(/"/g, "");
+      var thumb = img.thumb || "";
+      var full = img.image || img.thumb || "";
+      var date = img.date || "";
+      var center = img.center || "";
+      html += '<div style="cursor:pointer; border-radius:8px; overflow:hidden; background:#1a1f2a;" onclick="window.open(\'' + full + '\',\'_blank\')">';
+      html += '<img src="' + thumb + '" alt="' + title + '" style="width:100%; height:140px; object-fit:cover; display:block;" loading="lazy">';
+      html += '<div style="padding:8px;">';
+      html += '<div style="font-weight:bold; font-size:12px; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + title + '">' + (img.title || "") + '</div>';
+      html += '<div style="font-size:10px; color:var(--text-faint);">' + date + (center ? ' · ' + center : '') + '</div>';
+      html += '</div></div>';
+    });
+    html += '</div>';
+    document.getElementById("jwstGallery").innerHTML = html;
+  }
+
+  function searchJwstImages(query) {
+    var gallery = document.getElementById("jwstGallery");
+    gallery.innerHTML = '<em>Recherche de "' + query + '"…</em>';
+    var url = "https://images-api.nasa.gov/search?q=" + encodeURIComponent(query) + "&media_type=image&page_size=20";
+    fetch(url)
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.collection || !data.collection.items || data.collection.items.length === 0) {
+          gallery.innerHTML = '<em>Aucun résultat pour "' + query + '"</em>';
+          return;
+        }
+        var images = [];
+        data.collection.items.forEach(function (item) {
+          var meta = item.data && item.data[0];
+          if (!meta || !meta.nasa_id) return;
+          var thumb = "";
+          if (item.links) {
+            item.links.forEach(function (link) {
+              if (link.rel === "preview") thumb = link.href || "";
+            });
+          }
+          images.push({
+            title: meta.title || "",
+            description: (meta.description || "").slice(0, 500),
+            date: meta.date_created ? meta.date_created.slice(0, 10) : "",
+            nasa_id: meta.nasa_id,
+            center: meta.center || "",
+            thumb: thumb,
+            image: "https://images-assets.nasa.gov/image/" + meta.nasa_id + "/" + meta.nasa_id + "~medium.jpg"
+          });
+        });
+        renderJwstGallery(images);
+      })
+      .catch(function () {
+        gallery.innerHTML = '<em>Erreur de recherche.</em>';
+      });
+  }
+
+  document.getElementById("jwstSearchBtn").addEventListener("click", function () {
+    var q = document.getElementById("jwstSearch").value.trim();
+    if (q) searchJwstImages(q);
+  });
+  document.getElementById("jwstSearch").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      var q = this.value.trim();
+      if (q) searchJwstImages(q);
+    }
+  });
   }
 
   els.astroToggle.addEventListener("click", function () {
