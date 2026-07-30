@@ -979,6 +979,7 @@
       <button class="rain-toggle" id="eonetToggle">🌎 ÉVÉNEMENTS</button>
       <button class="rain-toggle" id="effisToggle">🔥🇪🇺 FEUX UE (7j)</button>
       <button class="rain-toggle" id="epicToggle">🌍 TERRE EN DIRECT</button>
+      <button class="rain-toggle" id="astroToggle">🔭 ESPACE</button>
       <button class="rain-toggle" id="capitalsToggle">🌍 CAPITALES</button>
       <button class="rain-toggle" id="compareToggle">⚖️ COMPARAISON</button>
       <button class="rain-toggle" id="profileToggleHeader">📊 PROFIL</button>
@@ -1185,6 +1186,38 @@
   </div>
 </div>
 
+<div class="capitals-overlay" id="astroOverlay">
+  <div class="capitals-panel" style="max-width: 680px; max-height: 90vh; overflow-y: auto;">
+    <div class="capitals-header">
+      <div>
+        <h2>🔭 Espace</h2>
+        <div class="capitals-sub">Photo du jour & astéroïdes proches</div>
+      </div>
+      <button class="detail-close" id="astroClose">✕</button>
+    </div>
+
+    <!-- APOD -->
+    <div style="padding: 22px; border-bottom: 1px solid var(--hairline);">
+      <h3 style="margin: 0 0 6px 0; color: var(--amber); font-size: 14px;">🌌 Photo astronomique du jour</h3>
+      <div id="apodTitle" style="font-weight: bold; font-size: 15px; margin-bottom: 8px;">Chargement...</div>
+      <div id="apodMedia" style="text-align: center; margin-bottom: 10px;"></div>
+      <div id="apodExplanation" style="font-size: 12px; color: var(--text-dim); line-height: 1.5;"></div>
+      <div id="apodCopyright" style="font-size: 10px; color: var(--text-faint); margin-top: 6px;"></div>
+    </div>
+
+    <!-- NEO -->
+    <div style="padding: 22px;">
+      <h3 style="margin: 0 0 6px 0; color: var(--amber); font-size: 14px;">☄️ Astéroïdes proches (7 jours)</h3>
+      <div id="neoCount" style="font-size: 12px; color: var(--text-dim); margin-bottom: 10px;"></div>
+      <div id="neoList" style="font-size: 12px;"></div>
+    </div>
+
+    <div class="hrecord" style="padding: 8px 22px; color: var(--text-faint); font-size: 10px; border-top: 1px solid var(--hairline);">
+      NASA Astronomy Picture of the Day (APOD) · NASA Near Earth Object Web Service (NeoWs)
+    </div>
+  </div>
+</div>
+
 <div class="capitals-overlay" id="locateOverlay">
   <div class="capitals-panel" style="max-width: 480px;">
     <div class="capitals-header">
@@ -1246,6 +1279,9 @@
     camsToggle: document.getElementById("camsToggle"),
     epicToggle: document.getElementById("epicToggle"),
     epicOverlay: document.getElementById("epicOverlay"),
+    astroToggle: document.getElementById("astroToggle"),
+    astroOverlay: document.getElementById("astroOverlay"),
+    astroClose: document.getElementById("astroClose"),
     epicClose: document.getElementById("epicClose"),
     epicSub: document.getElementById("epicSub"),
     epicImage: document.getElementById("epicImage"),
@@ -3112,6 +3148,96 @@
       epicPlaying = true;
       els.epicPlay.textContent = "⏸";
       epicPlayTimer = setInterval(function () { stepEpic(1); }, 700); // enchaine les images pour voir la rotation
+    }
+  });
+
+  // -------------------------------------------------------------------
+  // Panneau Espace (APOD + NEO)
+  // -------------------------------------------------------------------
+
+  var astroLoaded = false;
+
+  function loadAstro() {
+    astroLoaded = true;
+
+    // APOD
+    fetch(API_BASE + "/apod", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var apod = data.apod;
+        if (!apod) return;
+        document.getElementById("apodTitle").textContent = apod.title;
+        var mediaDiv = document.getElementById("apodMedia");
+        if (apod.media_type === "video") {
+          mediaDiv.innerHTML = '<iframe src="' + apod.url + '" style="width:100%;height:340px;border:none;border-radius:8px;" allowfullscreen></iframe>';
+        } else {
+          mediaDiv.innerHTML = '<img src="' + apod.url + '" alt="' + apod.title + '" style="max-width:100%;border-radius:8px;cursor:pointer;" onclick="window.open(\'' + (apod.hdurl || apod.url) + '\',\'_blank\')">';
+        }
+        document.getElementById("apodExplanation").textContent = apod.explanation;
+        document.getElementById("apodCopyright").textContent = apod.copyright ? "© " + apod.copyright + " · " + apod.date : apod.date;
+      })
+      .catch(function () {
+        document.getElementById("apodTitle").textContent = "Erreur de chargement";
+      });
+
+    // NEO
+    fetch(API_BASE + "/neo", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.asteroids || data.asteroids.length === 0) {
+          document.getElementById("neoList").innerHTML = "<em>Aucun asteroide cette semaine.</em>";
+          return;
+        }
+        document.getElementById("neoCount").textContent = data.count + " astéroïdes dans les 7 prochains jours";
+
+        var html = '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
+        html += '<tr style="color:var(--amber); border-bottom:1px solid var(--hairline);">';
+        html += '<th style="text-align:left;padding:6px 4px;">Nom</th>';
+        html += '<th style="text-align:right;padding:6px 4px;">Ø (m)</th>';
+        html += '<th style="text-align:right;padding:6px 4px;">Distance</th>';
+        html += '<th style="text-align:right;padding:6px 4px;">Vitesse</th>';
+        html += '<th style="text-align:center;padding:6px 4px;">⚠️</th></tr>';
+
+        // Afficher les 20 plus proches
+        var shown = data.asteroids.slice(0, 20);
+        shown.forEach(function (a) {
+          var diamStr = Math.round(a.diameter_min_km * 1000) + "-" + Math.round(a.diameter_max_km * 1000);
+          var distStr = a.miss_distance_lunar.toFixed(1) + " ×🌙";
+          var speedStr = Math.round(a.velocity_kmh).toLocaleString("fr-CH") + " km/h";
+          var hazard = a.is_hazardous ? "🔴" : "🟢";
+          var rowBg = a.is_hazardous ? "background:rgba(255,32,32,0.08);" : "";
+          html += '<tr style="border-bottom:1px solid var(--hairline);' + rowBg + '">';
+          html += '<td style="padding:6px 4px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + a.name + '">' + a.name + '</td>';
+          html += '<td style="text-align:right;padding:6px 4px;">' + diamStr + '</td>';
+          html += '<td style="text-align:right;padding:6px 4px;white-space:nowrap;">' + distStr + '</td>';
+          html += '<td style="text-align:right;padding:6px 4px;white-space:nowrap;">' + speedStr + '</td>';
+          html += '<td style="text-align:center;padding:6px 4px;">' + hazard + '</td>';
+          html += '</tr>';
+        });
+
+        html += '</table>';
+        if (data.asteroids.length > 20) {
+          html += '<div style="color:var(--text-faint);font-size:11px;margin-top:8px;">+ ' + (data.asteroids.length - 20) + ' autres astéroïdes non affichés</div>';
+        }
+        document.getElementById("neoList").innerHTML = html;
+      })
+      .catch(function () {
+        document.getElementById("neoList").innerHTML = "<em>Erreur de chargement des données NEO.</em>";
+      });
+  }
+
+  els.astroToggle.addEventListener("click", function () {
+    els.astroOverlay.classList.add("open");
+    if (!astroLoaded) loadAstro();
+  });
+
+  els.astroClose.addEventListener("click", function () {
+    els.astroOverlay.classList.remove("open");
+  });
+
+  els.astroOverlay.addEventListener("click", function (e) {
+    if (e.target === els.astroOverlay) {
+      els.astroOverlay.classList.remove("open");
     }
   });
 
