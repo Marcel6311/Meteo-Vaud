@@ -399,17 +399,37 @@ app.get("/neo", (req, res) => {
   });
 });
 
-// GET /jwst - Dernieres images du telescope James Webb (NASA Image Library)
-// Rafraichi toutes les 12h (les publications NASA ne changent pas souvent).
+// GET /jwst - Images du telescope James Webb (jwstapi.com / MAST Archive)
+// Rafraichi toutes les 12h.
 app.get("/jwst", (req, res) => {
   res.json({
-    source: "NASA Image and Video Library (images-api.nasa.gov)",
-    note: "Images traitees et publiees par la NASA — pas les donnees brutes du telescope.",
+    source: "James Webb Space Telescope API (jwstapi.com / MAST Archive)",
+    note: "Images des observations JWST — programmes ERO, ERS et commissioning.",
     updatedAt: jwstCache.updatedAt,
     lastError: jwstCache.lastError,
     count: jwstCache.images.length,
     images: jwstCache.images
   });
+});
+
+// GET /jwst/program/:id - Recherche d'images JWST par numero de programme
+app.get("/jwst/program/:id", async (req, res) => {
+  try {
+    const { searchJwstByProgram } = require("./sources/jwst");
+    const programId = parseInt(req.params.id);
+    if (isNaN(programId)) {
+      return res.status(400).json({ error: "ID de programme invalide" });
+    }
+    const images = await searchJwstByProgram(programId);
+    res.json({
+      source: "James Webb Space Telescope API (jwstapi.com)",
+      program: programId,
+      count: images.length,
+      images
+    });
+  } catch (err) {
+    res.status(502).json({ error: "Echec recherche JWST", detail: err.message });
+  }
 });
 
 // GET /epic - photos NASA EPIC/DSCOVR de la Terre entiere (proxy backend car l'API NASA ne supporte pas CORS)
