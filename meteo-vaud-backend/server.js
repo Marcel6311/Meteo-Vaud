@@ -30,6 +30,7 @@ const { fetchHeatwaveForStations, TEMP_THRESHOLD_C, CONSECUTIVE_DAYS_THRESHOLD }
 const { fetchEpicFrames } = require("./sources/epic");
 const { fetchFirmsData } = require("./sources/firms");
 const { fetchApod, fetchNeo } = require("./sources/nasa");
+const { fetchJwstImages } = require("./sources/jwst");
 
 const app = express();
 app.use(cors());
@@ -80,6 +81,7 @@ let epicCache = { updatedAt: null, frames: [], lastError: null };
 let firmsCache = { updatedAt: null, detections: [], lastError: null };
 let apodCache = { updatedAt: null, apod: null, lastError: null };
 let neoCache = { updatedAt: null, asteroids: [], lastError: null };
+let jwstCache = { updatedAt: null, images: [], lastError: null };
 
 function pickScope(req) {
   const scope = (req.query.scope || "vd").toLowerCase();
@@ -216,6 +218,21 @@ async function refreshNeo() {
   } catch (err) {
     neoCache.lastError = err.message;
     console.error("[refresh:neo] echec :", err.message);
+  }
+}
+
+async function refreshJwst() {
+  try {
+    const images = await fetchJwstImages();
+    jwstCache = {
+      updatedAt: new Date().toISOString(),
+      images,
+      lastError: null
+    };
+    console.log(`[refresh:jwst] ${images.length} images recuperees (${jwstCache.updatedAt})`);
+  } catch (err) {
+    jwstCache.lastError = err.message;
+    console.error("[refresh:jwst] echec :", err.message);
   }
 }
 
@@ -382,6 +399,19 @@ app.get("/neo", (req, res) => {
   });
 });
 
+// GET /jwst - Dernieres images du telescope James Webb (NASA Image Library)
+// Rafraichi toutes les 12h (les publications NASA ne changent pas souvent).
+app.get("/jwst", (req, res) => {
+  res.json({
+    source: "NASA Image and Video Library (images-api.nasa.gov)",
+    note: "Images traitees et publiees par la NASA — pas les donnees brutes du telescope.",
+    updatedAt: jwstCache.updatedAt,
+    lastError: jwstCache.lastError,
+    count: jwstCache.images.length,
+    images: jwstCache.images
+  });
+});
+
 // GET /epic - photos NASA EPIC/DSCOVR de la Terre entiere (proxy backend car l'API NASA ne supporte pas CORS)
 app.get("/epic", (req, res) => {
   res.json({
@@ -446,10 +476,12 @@ app.listen(PORT, async () => {
   await refreshFirms();
   await refreshApod();
   await refreshNeo();
+  await refreshJwst();
   setInterval(refreshAll, DATA_REFRESH_MS);
   setInterval(refreshFirms, 2 * 60 * 60 * 1000); // 2h : le satellite passe ~2 fois/jour, pas besoin de plus
   setInterval(refreshApod, 6 * 60 * 60 * 1000); // 6h : la photo change 1x/jour
   setInterval(refreshNeo, 6 * 60 * 60 * 1000); // 6h : les donnees NEO bougent lentement
+  setInterval(refreshJwst, 12 * 60 * 60 * 1000); // 12h : les publications NASA ne changent pas souvent
   setInterval(refreshHeatwave, 3 * 60 * 60 * 1000); // 3h : la prevision OWM ne change pas assez vite pour justifier plus frequent
   setInterval(refreshEpic, 60 * 60 * 1000); // 1h : cadence proche de celle des vraies prises de vue EPIC
   setInterval(refreshAllCapitalRegions, CAPITALS_REFRESH_MS);
