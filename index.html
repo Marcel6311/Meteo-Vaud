@@ -1215,10 +1215,11 @@
     <!-- JWST Gallery -->
     <div style="padding: 22px; border-top: 1px solid var(--hairline);">
       <h3 style="margin: 0 0 10px 0; color: var(--amber); font-size: 14px;">🔭 Images — James Webb Space Telescope</h3>
-      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-        <input id="jwstSearch" type="text" placeholder="Rechercher… (ex: Carina, Saturn, Orion, galaxy)" style="flex:1; padding:8px 12px; border-radius:6px; border:1px solid var(--hairline); background:#1a1f2a; color:#fff; font-size:13px;">
+      <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+        <input id="jwstSearch" type="text" placeholder="Rechercher… (ex: Carina, Saturn, Orion)" style="flex:1; padding:8px 12px; border-radius:6px; border:1px solid var(--hairline); background:#1a1f2a; color:#fff; font-size:13px;">
         <button id="jwstSearchBtn" class="rain-toggle" style="padding:8px 14px; font-size:13px;">🔍</button>
       </div>
+      <div id="jwstSuggestions" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;"></div>
       <div id="jwstGallery" style="font-size: 12px;">Chargement...</div>
     </div>
 
@@ -3306,6 +3307,30 @@
         gallery.innerHTML = '<em>Erreur de recherche.</em>';
       });
   }
+
+  // Suggestions de recherche cliquables
+  var jwstSuggestions = [
+    "Carina Nebula", "Pillars of Creation", "Deep Field", "Orion Nebula",
+    "Saturn", "Jupiter", "Mars", "Andromeda", "Ring Nebula", "Eagle Nebula",
+    "Crab Nebula", "Helix Nebula", "Tarantula Nebula", "Neptune",
+    "Phantom Galaxy", "Cartwheel Galaxy", "Black Hole", "Exoplanet",
+    "Supernova", "Milky Way", "Pluto", "Moon", "Sun", "Hubble"
+  ];
+  (function () {
+    var container = document.getElementById("jwstSuggestions");
+    jwstSuggestions.forEach(function (term) {
+      var btn = document.createElement("span");
+      btn.textContent = term;
+      btn.style.cssText = "cursor:pointer; padding:4px 10px; border-radius:12px; background:#1a1f2a; border:1px solid var(--hairline); font-size:11px; color:var(--text-dim); white-space:nowrap;";
+      btn.addEventListener("click", function () {
+        document.getElementById("jwstSearch").value = term;
+        searchJwstImages(term);
+      });
+      btn.addEventListener("mouseenter", function () { btn.style.borderColor = "var(--amber)"; btn.style.color = "#fff"; });
+      btn.addEventListener("mouseleave", function () { btn.style.borderColor = "var(--hairline)"; btn.style.color = "var(--text-dim)"; });
+      container.appendChild(btn);
+    });
+  })();
 
   document.getElementById("jwstSearchBtn").addEventListener("click", function () {
     var q = document.getElementById("jwstSearch").value.trim();
