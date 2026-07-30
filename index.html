@@ -1215,11 +1215,13 @@
     <!-- JWST Gallery -->
     <div style="padding: 22px; border-top: 1px solid var(--hairline);">
       <h3 style="margin: 0 0 10px 0; color: var(--amber); font-size: 14px;">🔭 Images — James Webb Space Telescope</h3>
-      <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-        <input id="jwstSearch" type="text" placeholder="Rechercher… (ex: Carina, Saturn, Orion)" style="flex:1; padding:8px 12px; border-radius:6px; border:1px solid var(--hairline); background:#1a1f2a; color:#fff; font-size:13px;">
-        <button id="jwstSearchBtn" class="rain-toggle" style="padding:8px 14px; font-size:13px;">🔍</button>
+      <div style="position:relative; margin-bottom: 12px;">
+        <div style="display: flex; gap: 8px;">
+          <input id="jwstSearch" type="text" placeholder="Rechercher… (ex: nebula, saturn, galaxy, mars)" autocomplete="off" style="flex:1; padding:8px 12px; border-radius:6px; border:1px solid var(--hairline); background:#1a1f2a; color:#fff; font-size:13px;">
+          <button id="jwstSearchBtn" class="rain-toggle" style="padding:8px 14px; font-size:13px;">🔍</button>
+        </div>
+        <div id="jwstAutocomplete" style="display:none; position:absolute; top:42px; left:0; right:56px; background:#1a1f2a; border:1px solid var(--hairline); border-radius:6px; max-height:220px; overflow-y:auto; z-index:10;"></div>
       </div>
-      <div id="jwstSuggestions" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;"></div>
       <div id="jwstGallery" style="font-size: 12px;">Chargement...</div>
     </div>
 
@@ -3308,60 +3310,95 @@
       });
   }
 
-  // Suggestions de recherche cliquables
-  // Chaque entree : [label affiche, requete reelle]
-  var jwstSuggestions = [
-    ["Carina Nebula", "Carina Nebula NIRCam"],
-    ["Pillars of Creation", "Pillars of Creation Webb"],
-    ["Deep Field", "Webb deep field galaxy"],
-    ["Orion Nebula", "Orion Nebula infrared"],
-    ["Saturne", "Saturn planet Cassini"],
-    ["Jupiter", "Jupiter planet atmosphere Juno"],
-    ["Mars surface", "Mars surface rover"],
-    ["Andromède", "Andromeda galaxy Hubble"],
-    ["Ring Nebula", "Ring Nebula Webb NIRCam"],
-    ["Eagle Nebula", "Eagle Nebula Hubble"],
-    ["Crab Nebula", "Crab Nebula Webb"],
-    ["Helix Nebula", "Helix Nebula Webb"],
-    ["Tarantula Nebula", "Tarantula Nebula Webb"],
-    ["Neptune", "Neptune planet Voyager Webb"],
-    ["Phantom Galaxy", "Phantom Galaxy Webb MIRI"],
-    ["Cartwheel Galaxy", "Cartwheel Galaxy Webb"],
-    ["Trou noir", "black hole NASA accretion"],
-    ["Exoplanète", "exoplanet atmosphere Webb spectrum"],
-    ["Supernova", "supernova remnant Hubble Webb"],
-    ["Voie lactée", "Milky Way center infrared"],
-    ["Pluton", "Pluto planet New Horizons surface"],
-    ["Lune", "Moon lunar surface NASA"],
-    ["Soleil", "Sun solar flare NASA SDO"],
-    ["Terre", "Earth planet space ISS"],
-    ["Hubble", "Hubble deep field galaxy nebula"]
-  ];
-  (function () {
-    var container = document.getElementById("jwstSuggestions");
-    jwstSuggestions.forEach(function (item) {
-      var label = item[0];
-      var query = item[1];
-      var btn = document.createElement("span");
-      btn.textContent = label;
-      btn.style.cssText = "cursor:pointer; padding:4px 10px; border-radius:12px; background:#1a1f2a; border:1px solid var(--hairline); font-size:11px; color:var(--text-dim); white-space:nowrap;";
-      btn.addEventListener("click", function () {
-        document.getElementById("jwstSearch").value = label;
-        searchJwstImages(query);
-      });
-      btn.addEventListener("mouseenter", function () { btn.style.borderColor = "var(--amber)"; btn.style.color = "#fff"; });
-      btn.addEventListener("mouseleave", function () { btn.style.borderColor = "var(--hairline)"; btn.style.color = "var(--text-dim)"; });
-      container.appendChild(btn);
+  // Autocomplete : recherche en temps reel pendant la frappe
+  var jwstSearchTimer = null;
+  var jwstAutocomplete = document.getElementById("jwstAutocomplete");
+
+  function showAutocomplete(results) {
+    if (!results || results.length === 0) {
+      jwstAutocomplete.style.display = "none";
+      return;
+    }
+    var html = "";
+    results.forEach(function (r) {
+      var safeTitle = r.title.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+      html += '<div style="padding:8px 12px; cursor:pointer; font-size:12px; border-bottom:1px solid var(--hairline); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" ' +
+        'onmouseenter="this.style.background=\'#2a3040\'" onmouseleave="this.style.background=\'transparent\'" ' +
+        'data-query="' + safeTitle + '">';
+      if (r.thumb) {
+        html += '<img src="' + r.thumb + '" style="width:32px; height:32px; object-fit:cover; border-radius:4px; vertical-align:middle; margin-right:8px;">';
+      }
+      html += r.title + ' <span style="color:var(--text-faint); font-size:10px;">' + (r.date || "") + '</span></div>';
     });
-  })();
+    jwstAutocomplete.innerHTML = html;
+    jwstAutocomplete.style.display = "block";
+
+    // Clic sur une suggestion
+    jwstAutocomplete.querySelectorAll("[data-query]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var q = this.getAttribute("data-query");
+        document.getElementById("jwstSearch").value = q;
+        jwstAutocomplete.style.display = "none";
+        searchJwstImages(q);
+      });
+    });
+  }
+
+  function fetchAutocomplete(query) {
+    var url = "https://images-api.nasa.gov/search?q=" + encodeURIComponent(query) + "&media_type=image&page_size=8";
+    fetch(url)
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.collection || !data.collection.items) {
+          showAutocomplete([]);
+          return;
+        }
+        var results = [];
+        data.collection.items.forEach(function (item) {
+          var meta = item.data && item.data[0];
+          if (!meta) return;
+          var thumb = "";
+          if (item.links) {
+            item.links.forEach(function (link) {
+              if (link.rel === "preview") thumb = link.href || "";
+            });
+          }
+          results.push({ title: meta.title || "", date: meta.date_created ? meta.date_created.slice(0, 10) : "", thumb: thumb });
+        });
+        showAutocomplete(results);
+      })
+      .catch(function () { showAutocomplete([]); });
+  }
+
+  document.getElementById("jwstSearch").addEventListener("input", function () {
+    var q = this.value.trim();
+    clearTimeout(jwstSearchTimer);
+    if (q.length < 2) {
+      jwstAutocomplete.style.display = "none";
+      return;
+    }
+    // Delai de 400ms pour eviter de spammer l'API a chaque lettre
+    jwstSearchTimer = setTimeout(function () {
+      fetchAutocomplete(q);
+    }, 400);
+  });
+
+  // Fermer l'autocomplete quand on clique ailleurs
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest("#jwstSearch") && !e.target.closest("#jwstAutocomplete")) {
+      jwstAutocomplete.style.display = "none";
+    }
+  });
 
   document.getElementById("jwstSearchBtn").addEventListener("click", function () {
     var q = document.getElementById("jwstSearch").value.trim();
+    jwstAutocomplete.style.display = "none";
     if (q) searchJwstImages(q);
   });
   document.getElementById("jwstSearch").addEventListener("keydown", function (e) {
     if (e.key === "Enter") {
       var q = this.value.trim();
+      jwstAutocomplete.style.display = "none";
       if (q) searchJwstImages(q);
     }
   });
