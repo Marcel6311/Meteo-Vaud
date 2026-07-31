@@ -5,22 +5,22 @@
 // (meme format que grib2json / wind-js-server) : deux "bandes" (U et V,
 // composantes est-ouest et nord-sud du vent).
 //
-// Deux grilles sont disponibles :
-//   - Europe : 1 degre d'ecart, precise, pour la vue rapprochee
-//   - Monde  : 4 degres d'ecart, plus large mais moins precise, pour la vue dezoomee
-//
-// Open-Meteo accepte plusieurs points par requete (latitude/longitude
-// en listes separees par virgules), ce qui evite de faire un appel par
-// point. On decoupe en lots de 80 points pour rester prudent sur la
-// taille des requetes.
+// Une grille par continent (meme decoupage que les zones FIRMS), chacune
+// a 2 degres d'ecart. Cela repartit les appels Open-Meteo dans le temps
+// (chaque continent est rafraichi separement) plutot que de tout demander
+// d'un coup, ce qui limite le risque de 429 (limite de requetes atteinte).
 
 const https = require("https");
 
-var BATCH_SIZE = 300; // points par requete Open-Meteo (augmente pour reduire le nombre total d'appels)
+var BATCH_SIZE = 300; // points par requete Open-Meteo
 
 var GRIDS = {
-  europe: { lonMin: -12, lonMax: 32, lonStep: 1, latMin: 34, latMax: 62, latStep: 1 },
-  world:  { lonMin: -180, lonMax: 180, lonStep: 5, latMin: -60, latMax: 75, latStep: 5 }
+  europe:        { lonMin: -12, lonMax: 32,  lonStep: 2, latMin: 34,  latMax: 62, latStep: 2 },
+  north_america: { lonMin: -170, lonMax: -50, lonStep: 2, latMin: 10,  latMax: 75, latStep: 2 },
+  south_america: { lonMin: -85,  lonMax: -30, lonStep: 2, latMin: -60, latMax: 15, latStep: 2 },
+  africa:        { lonMin: -20,  lonMax: 55,  lonStep: 2, latMin: -40, latMax: 40, latStep: 2 },
+  asia:          { lonMin: 25,   lonMax: 180, lonStep: 2, latMin: -10, latMax: 75, latStep: 2 },
+  oceania:       { lonMin: 100,  lonMax: 180, lonStep: 2, latMin: -50, latMax: -5, latStep: 2 }
 };
 
 function buildGrid(cfg) {
@@ -165,12 +165,13 @@ async function fetchWindGrid(cfg) {
   ];
 }
 
-function fetchEuropeWindGrid() {
-  return fetchWindGrid(GRIDS.europe);
+function fetchWindGridFor(region) {
+  var cfg = GRIDS[region];
+  if (!cfg) throw new Error("Region de vent inconnue : " + region);
+  return fetchWindGrid(cfg);
 }
 
-function fetchWorldWindGrid() {
-  return fetchWindGrid(GRIDS.world);
-}
-
-module.exports = { fetchEuropeWindGrid, fetchWorldWindGrid };
+module.exports = {
+  fetchWindGridFor,
+  REGIONS: Object.keys(GRIDS)
+};
