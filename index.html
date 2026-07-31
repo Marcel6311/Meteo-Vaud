@@ -2367,7 +2367,10 @@
 
   var windLayer = null;
   var windVisible = false;
-  var windData = null;
+  var windDataEurope = null;
+  var windDataWorld = null;
+  var windCurrentScope = null; // "europe" ou "world"
+  var WIND_ZOOM_THRESHOLD = 4; // en dessous de ce zoom, on bascule sur la grille mondiale
 
   function buildWindLayer(data) {
     return L.velocityLayer({
@@ -2391,10 +2394,22 @@
     });
   }
 
+  function pickWindScope() {
+    return map.getZoom() < WIND_ZOOM_THRESHOLD ? "world" : "europe";
+  }
+
+  function renderWindForCurrentScope() {
+    var scope = pickWindScope();
+    var data = scope === "world" ? windDataWorld : windDataEurope;
+    if (!data) return; // pas encore charge pour ce scope
+    if (windLayer) map.removeLayer(windLayer);
+    windLayer = buildWindLayer(data);
+    map.addLayer(windLayer);
+    windCurrentScope = scope;
+  }
+
   function showWindLayer() {
-    if (!windData) return; // pas encore charge
-    if (!windLayer) windLayer = buildWindLayer(windData);
-    if (!map.hasLayer(windLayer)) map.addLayer(windLayer);
+    renderWindForCurrentScope();
   }
 
   function hideWindLayer() {
@@ -2406,22 +2421,34 @@
       .then(function (r) { return r.json(); })
       .then(function (resp) {
         if (!resp.grid) return;
-        // Convertir les vitesses m/s (fournies par le backend) en km/h pour l'affichage,
-        // car leaflet-velocity utilise directement les unites du header sans conversion.
-        windData = resp.grid;
-        if (windVisible) {
-          hideWindLayer();
-          windLayer = buildWindLayer(windData);
-          map.addLayer(windLayer);
-        }
+        windDataEurope = resp.grid;
+        if (windVisible && pickWindScope() === "europe") renderWindForCurrentScope();
       })
       .catch(function (err) {
-        console.error("[vent] echec chargement :", err);
+        console.error("[vent] echec chargement Europe :", err);
+      });
+
+    fetch(API_BASE + "/wind-world", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (resp) {
+        if (!resp.grid) return;
+        windDataWorld = resp.grid;
+        if (windVisible && pickWindScope() === "world") renderWindForCurrentScope();
+      })
+      .catch(function (err) {
+        console.error("[vent] echec chargement mondial :", err);
       });
   }
 
   fetchWindAndMaybeShow();
   setInterval(fetchWindAndMaybeShow, 3 * 60 * 60 * 1000); // 3h, aligne sur le refresh backend
+
+  // Rebasculer entre grille Europe et mondiale au changement de zoom
+  map.on("zoomend", function () {
+    if (windVisible && pickWindScope() !== windCurrentScope) {
+      renderWindForCurrentScope();
+    }
+  });
 
   els.windToggle.addEventListener("click", function () {
     windVisible = !windVisible;
