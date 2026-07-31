@@ -1,18 +1,27 @@
 // sources/wind.js
 //
-// Construit des grilles de vent (vitesse + direction a 10m) via Open-Meteo
-// (gratuit, sans cle), converties au format attendu par leaflet-velocity
-// (meme format que grib2json / wind-js-server) : deux "bandes" (U et V,
-// composantes est-ouest et nord-sud du vent).
+// Construit des grilles de vent (vitesse + direction a 10m) via OpenWeatherMap,
+// converties au format attendu par leaflet-velocity (meme format que
+// grib2json / wind-js-server) : deux "bandes" (U et V, composantes
+// est-ouest et nord-sud du vent).
 //
-// Une grille par continent (meme decoupage que les zones FIRMS), chacune
-// a 2 degres d'ecart. Cela repartit les appels Open-Meteo dans le temps
-// (chaque continent est rafraichi separement) plutot que de tout demander
-// d'un coup, ce qui limite le risque de 429 (limite de requetes atteinte).
+// OpenWeatherMap (contrairement a Open-Meteo) n'accepte qu'un point par
+// requete, mais fonctionne par cle API (pas par IP partagee) -> pas de
+// probleme de quota partage avec d'autres utilisateurs de Render.
+// Limite gratuite : 60 requetes/minute, 1 million/mois. On espace les
+// appels a ~1.1s pour rester bien en dessous.
+//
+// Une grille par continent (meme decoupage que les zones FIRMS), 2 degres
+// d'ecart. Chaque continent (~300-500 points) prend plusieurs minutes a
+// construire, mais ca se passe en arriere-plan au refresh (toutes les 3-6h).
 
 const https = require("https");
 
-var BATCH_SIZE = 300; // points par requete Open-Meteo
+// Meme cle que celle deja utilisee cote client pour les tuiles/capitales
+// (cle publique, sans risque a reutiliser cote serveur)
+var OWM_API_KEY = process.env.OWM_API_KEY || "40e0a05ac561c2b71d1f2610cae0012d";
+
+var DELAY_BETWEEN_CALLS_MS = 1100; // ~54 appels/minute, sous la limite de 60/min
 
 var GRIDS = {
   europe:        { lonMin: -12, lonMax: 32,  lonStep: 2, latMin: 34,  latMax: 62, latStep: 2 },
@@ -38,7 +47,7 @@ function httpGet(url) {
       res.on("data", function (chunk) { data += chunk; });
       res.on("end", function () {
         if (res.statusCode !== 200) {
-          reject(new Error("Open-Meteo HTTP " + res.statusCode + ": " + data.slice(0, 300)));
+          reject(new Error("OpenWeatherMap HTTP " + res.statusCode + ": " + data.slice(0, 200)));
         } else {
           resolve(data);
         }
@@ -60,20 +69,17 @@ async function httpGetWithRetry(url, retries) {
     } catch (err) {
       var is429 = err.message.indexOf("429") !== -1;
       if (attempt === retries) throw err;
-      var delay = is429 ? 65000 : (delays[attempt] || 10000); // 429 : attendre 65s comme demande par l'API
-      console.log("[wind] echec tentative " + (attempt + 1) + " — retry dans " + (delay / 1000) + "s" + (is429 ? " (limite de requetes atteinte)" : ""));
+      var delay = is429 ? 60000 : (delays[attempt] || 10000);
+      console.log("[wind] echec tentative " + (attempt + 1) + " — retry dans " + (delay / 1000) + "s" + (is429 ? " (limite atteinte)" : ""));
       await sleep(delay);
     }
   }
 }
 
-// Convertit vitesse (km/h) + direction meteo (d'ou vient le vent, degres)
-// en composantes U (est-ouest) et V (nord-sud) en m/s, convention vent
-// "vers ou il souffle" (necessaire pour l'animation des particules).
-function toUV(speedKmh, directionDeg) {
-  var speedMs = speedKmh / 3.6;
-  // La direction meteo indique d'ou vient le vent -> on ajoute 180 pour
-  // obtenir la direction vers laquelle il souffle.
+// Convertit vitesse (m/s, unite native OpenWeatherMap) + direction meteo
+// (d'ou vient le vent, degres) en composantes U/V, convention "vers ou
+// le vent souffle" (necessaire pour l'animation des particules).
+function toUV(speedMs, directionDeg) {
   var towardDeg = (directionDeg + 180) % 360;
   var rad = (towardDeg * Math.PI) / 180;
   var u = speedMs * Math.sin(rad); // composante est-ouest
@@ -83,12 +89,12 @@ function toUV(speedKmh, directionDeg) {
 
 async function fetchWindGrid(cfg) {
   var grid = buildGrid(cfg);
-  var allPoints = []; // { lat, lon } dans l'ordre lon-major (grib2json convention : ligne par latitude, du nord au sud)
 
   // Ordre attendu par leaflet-velocity : la1 (nord) -> la2 (sud), lo1 (ouest) -> lo2 (est)
-  var latsDesc = grid.lats.slice().sort(function (a, b) { return b - a; }); // nord -> sud
-  var lonsAsc = grid.lons.slice().sort(function (a, b) { return a - b; });  // ouest -> est
+  var latsDesc = grid.lats.slice().sort(function (a, b) { return b - a; });
+  var lonsAsc = grid.lons.slice().sort(function (a, b) { return a - b; });
 
+  var allPoints = [];
   latsDesc.forEach(function (lat) {
     lonsAsc.forEach(function (lon) {
       allPoints.push({ lat: lat, lon: lon });
@@ -98,40 +104,32 @@ async function fetchWindGrid(cfg) {
   var uData = new Array(allPoints.length).fill(0);
   var vData = new Array(allPoints.length).fill(0);
 
-  // Traiter par lots pour ne pas surcharger une seule requete, avec une
-  // pause entre chaque lot pour respecter la limite de requetes/minute d'Open-Meteo
-  for (var i = 0; i < allPoints.length; i += BATCH_SIZE) {
-    var batch = allPoints.slice(i, i + BATCH_SIZE);
-    var latStr = batch.map(function (p) { return p.lat; }).join(",");
-    var lonStr = batch.map(function (p) { return p.lon; }).join(",");
+  console.log("[wind] " + allPoints.length + " points a recuperer (OpenWeatherMap, ~1 point/1.1s)...");
 
-    var url = "https://api.open-meteo.com/v1/forecast?latitude=" + latStr +
-      "&longitude=" + lonStr + "&current=wind_speed_10m,wind_direction_10m" +
-      "&wind_speed_unit=kmh";
+  for (var i = 0; i < allPoints.length; i++) {
+    var p = allPoints[i];
+    var url = "https://api.openweathermap.org/data/2.5/weather?lat=" + p.lat +
+      "&lon=" + p.lon + "&units=metric&appid=" + OWM_API_KEY;
 
-    console.log("[wind] lot " + (Math.floor(i / BATCH_SIZE) + 1) + "/" + Math.ceil(allPoints.length / BATCH_SIZE) + " (" + batch.length + " points)...");
+    try {
+      var raw = await httpGetWithRetry(url, 2);
+      var data = JSON.parse(raw);
+      if (data.wind && data.wind.speed !== undefined && data.wind.deg !== undefined) {
+        var uv = toUV(data.wind.speed, data.wind.deg);
+        uData[i] = Math.round(uv.u * 100) / 100;
+        vData[i] = Math.round(uv.v * 100) / 100;
+      }
+    } catch (err) {
+      console.error("[wind] echec point " + p.lat + "," + p.lon + " : " + err.message);
+      // On continue avec les autres points (0,0 = pas de vent pour celui-ci)
+    }
 
-    var raw = await httpGetWithRetry(url, 3);
-    var data = JSON.parse(raw);
+    if ((i + 1) % 50 === 0) {
+      console.log("[wind] " + (i + 1) + "/" + allPoints.length + " points...");
+    }
 
-    // Reponse multi-points : un tableau d'objets (un par point) quand plusieurs lat/lon sont passes
-    var responses = Array.isArray(data) ? data : [data];
-
-    responses.forEach(function (resp, idx) {
-      var globalIdx = i + idx;
-      if (!resp || !resp.current) return;
-      var speed = resp.current.wind_speed_10m;
-      var dir = resp.current.wind_direction_10m;
-      if (speed === undefined || dir === undefined) return;
-      var uv = toUV(speed, dir);
-      uData[globalIdx] = Math.round(uv.u * 100) / 100;
-      vData[globalIdx] = Math.round(uv.v * 100) / 100;
-    });
-
-    // Pause entre les lots pour eviter le 429 (IP partagee sur Render,
-    // le quota peut deja etre entame par d'autres utilisateurs du meme range d'IP)
-    if (i + BATCH_SIZE < allPoints.length) {
-      await sleep(4000);
+    if (i < allPoints.length - 1) {
+      await sleep(DELAY_BETWEEN_CALLS_MS);
     }
   }
 
@@ -146,7 +144,7 @@ async function fetchWindGrid(cfg) {
     parameterCategory: 2,
     la1: latsDesc[0],
     la2: latsDesc[latsDesc.length - 1],
-    parameterNumber: 2, // sera ecrase par bande (2 = U, 3 = V)
+    parameterNumber: 2,
     lo2: lonsAsc[lonsAsc.length - 1],
     lo1: lonsAsc[0],
     nx: nx,
