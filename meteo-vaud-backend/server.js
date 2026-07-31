@@ -31,6 +31,7 @@ const { fetchEpicFrames } = require("./sources/epic");
 const { fetchFirmsData } = require("./sources/firms");
 const { fetchApod, fetchNeo } = require("./sources/nasa");
 const { fetchJwstImages } = require("./sources/jwst");
+const { fetchWindGrid } = require("./sources/wind");
 
 const app = express();
 app.use(cors());
@@ -82,6 +83,7 @@ let firmsCache = { updatedAt: null, detections: [], lastError: null };
 let apodCache = { updatedAt: null, apod: null, lastError: null };
 let neoCache = { updatedAt: null, asteroids: [], lastError: null };
 let jwstCache = { updatedAt: null, images: [], lastError: null };
+let windCache = { updatedAt: null, grid: null, lastError: null };
 
 function pickScope(req) {
   const scope = (req.query.scope || "vd").toLowerCase();
@@ -233,6 +235,21 @@ async function refreshJwst() {
   } catch (err) {
     jwstCache.lastError = err.message;
     console.error("[refresh:jwst] echec :", err.message);
+  }
+}
+
+async function refreshWind() {
+  try {
+    const grid = await fetchWindGrid();
+    windCache = {
+      updatedAt: new Date().toISOString(),
+      grid,
+      lastError: null
+    };
+    console.log(`[refresh:wind] grille de vent mise a jour (${windCache.updatedAt})`);
+  } catch (err) {
+    windCache.lastError = err.message;
+    console.error("[refresh:wind] echec :", err.message);
   }
 }
 
@@ -411,6 +428,17 @@ app.get("/jwst", (req, res) => {
   });
 });
 
+// GET /wind - grille de vent (vitesse/direction 10m) au format leaflet-velocity
+// Source : Open-Meteo (gratuit, sans cle). Rafraichi toutes les 3h.
+app.get("/wind", (req, res) => {
+  res.json({
+    source: "Open-Meteo (grille construite cote serveur)",
+    updatedAt: windCache.updatedAt,
+    lastError: windCache.lastError,
+    grid: windCache.grid
+  });
+});
+
 // GET /epic - photos NASA EPIC/DSCOVR de la Terre entiere (proxy backend car l'API NASA ne supporte pas CORS)
 app.get("/epic", (req, res) => {
   res.json({
@@ -476,11 +504,13 @@ var httpServer = app.listen(PORT, async () => {
   await refreshApod();
   await refreshNeo();
   await refreshJwst();
+  await refreshWind();
   setInterval(refreshAll, DATA_REFRESH_MS);
   setInterval(refreshFirms, 2 * 60 * 60 * 1000); // 2h : le satellite passe ~2 fois/jour, pas besoin de plus
   setInterval(refreshApod, 6 * 60 * 60 * 1000); // 6h : la photo change 1x/jour
   setInterval(refreshNeo, 6 * 60 * 60 * 1000); // 6h : les donnees NEO bougent lentement
   setInterval(refreshJwst, 12 * 60 * 60 * 1000); // 12h : les publications NASA ne changent pas souvent
+  setInterval(refreshWind, 3 * 60 * 60 * 1000); // 3h : le vent change lentement
   setInterval(refreshHeatwave, 3 * 60 * 60 * 1000); // 3h : la prevision OWM ne change pas assez vite pour justifier plus frequent
   setInterval(refreshEpic, 60 * 60 * 1000); // 1h : cadence proche de celle des vraies prises de vue EPIC
   setInterval(refreshAllCapitalRegions, CAPITALS_REFRESH_MS);
