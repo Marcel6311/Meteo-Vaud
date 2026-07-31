@@ -1773,123 +1773,16 @@
   });
 
   // -------------------------------------------------------------------
-  // Foudre en temps reel (Blitzortung.org via proxy backend)
+  // Foudre en temps reel (Blitzortung.org - lien externe)
   // -------------------------------------------------------------------
-
-  var lightningVisible = false;
-  var lightningWs = null;
-  var lightningStrikes = []; // { marker, time }
-  var lightningCleanupTimer = null;
-  var LIGHTNING_MAX_AGE_MS = 20 * 60 * 1000;
-  var LIGHTNING_CLEANUP_MS = 15 * 1000;
-  var lightningRenderer = L.canvas({ padding: 0.5 });
-
-  function lightningColor(ageMs) {
-    if (ageMs < 60000) return "#ffffff";
-    if (ageMs < 300000) return "#fff68f";
-    if (ageMs < 600000) return "#ffa500";
-    if (ageMs < 900000) return "#ff4500";
-    return "#8b0000";
-  }
-
-  function lightningOpacity(ageMs) {
-    if (ageMs < 60000) return 1.0;
-    if (ageMs < 300000) return 0.85;
-    if (ageMs < 600000) return 0.65;
-    if (ageMs < 900000) return 0.45;
-    return 0.25;
-  }
-
-  function addLightningStrike(lat, lon, time) {
-    var m = L.circleMarker([lat, lon], {
-      radius: 4,
-      fillColor: "#ffffff",
-      fillOpacity: 1.0,
-      color: "#ffffff",
-      weight: 1,
-      renderer: lightningRenderer,
-      pane: "markerPane"
-    }).addTo(map);
-    lightningStrikes.push({ marker: m, time: time });
-  }
-
-  function cleanupLightning() {
-    var now = Date.now();
-    var fresh = [];
-    lightningStrikes.forEach(function (s) {
-      var age = now - s.time;
-      if (age > LIGHTNING_MAX_AGE_MS) {
-        map.removeLayer(s.marker);
-      } else {
-        s.marker.setStyle({
-          fillColor: lightningColor(age),
-          fillOpacity: lightningOpacity(age),
-          color: lightningColor(age)
-        });
-        fresh.push(s);
-      }
-    });
-    lightningStrikes = fresh;
-  }
-
-  function connectLightning() {
-    var url = "wss://meteo-vaud.onrender.com/lightning";
-    try {
-      lightningWs = new WebSocket(url);
-    } catch (err) {
-      console.error("[foudre] echec connexion :", err);
-      return;
-    }
-    lightningWs.onopen = function () {
-      console.log("[foudre] connecte au proxy");
-    };
-    lightningWs.onmessage = function (event) {
-      try {
-        var data = JSON.parse(event.data);
-        if (data.type === "buffer" && Array.isArray(data.strikes)) {
-          data.strikes.forEach(function (s) {
-            addLightningStrike(s.lat, s.lon, s.time);
-          });
-          cleanupLightning();
-          return;
-        }
-        if (data.lat !== undefined && data.lon !== undefined) {
-          addLightningStrike(data.lat, data.lon, data.time || Date.now());
-        }
-      } catch (e) {}
-    };
-    lightningWs.onerror = function () {
-      console.error("[foudre] erreur WebSocket");
-    };
-    lightningWs.onclose = function () {
-      console.log("[foudre] deconnecte");
-      if (lightningVisible) setTimeout(connectLightning, 5000);
-    };
-    lightningCleanupTimer = setInterval(cleanupLightning, LIGHTNING_CLEANUP_MS);
-  }
-
-  function disconnectLightning() {
-    if (lightningWs) {
-      lightningWs.onclose = null;
-      lightningWs.close();
-      lightningWs = null;
-    }
-    if (lightningCleanupTimer) {
-      clearInterval(lightningCleanupTimer);
-      lightningCleanupTimer = null;
-    }
-    lightningStrikes.forEach(function (s) { map.removeLayer(s.marker); });
-    lightningStrikes = [];
-  }
+  // Le WebSocket Blitzortung bloque les IP de serveurs cloud (Render).
+  // Le bouton ouvre la carte interactive Blitzortung centree sur la vue
+  // actuelle de la carte Meteo-Vaud.
 
   els.lightningToggle.addEventListener("click", function () {
-    lightningVisible = !lightningVisible;
-    els.lightningToggle.classList.toggle("active", lightningVisible);
-    if (lightningVisible) {
-      connectLightning();
-    } else {
-      disconnectLightning();
-    }
+    var center = map.getCenter();
+    var zoom = Math.round(map.getZoom());
+    window.open("https://map.blitzortung.org/#" + zoom + "/" + center.lat.toFixed(1) + "/" + center.lng.toFixed(1), "_blank");
   });
 
   // -------------------------------------------------------------------
