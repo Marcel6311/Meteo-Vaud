@@ -1773,27 +1773,23 @@
   });
 
   // -------------------------------------------------------------------
-  // Foudre en temps reel (Blitzortung.org via WebSocket)
+  // Foudre en temps reel (Blitzortung.org via proxy backend)
   // -------------------------------------------------------------------
-  // Connexion directe au WebSocket Blitzortung. Chaque eclair est affiche
-  // sur la carte avec une couleur qui evolue selon son age :
-  //   blanc = instant, jaune = 5min, orange = 10min, rouge = 15min, retire a 20min.
-  // Usage non commercial, gratuit, sans cle.
 
   var lightningVisible = false;
   var lightningWs = null;
   var lightningStrikes = []; // { marker, time }
   var lightningCleanupTimer = null;
-  var LIGHTNING_MAX_AGE_MS = 20 * 60 * 1000; // 20 minutes
-  var LIGHTNING_CLEANUP_MS = 15 * 1000; // nettoyage toutes les 15s
+  var LIGHTNING_MAX_AGE_MS = 20 * 60 * 1000;
+  var LIGHTNING_CLEANUP_MS = 15 * 1000;
   var lightningRenderer = L.canvas({ padding: 0.5 });
 
   function lightningColor(ageMs) {
-    if (ageMs < 60000) return "#ffffff";       // < 1min : blanc
-    if (ageMs < 300000) return "#fff68f";      // < 5min : jaune clair
-    if (ageMs < 600000) return "#ffa500";      // < 10min : orange
-    if (ageMs < 900000) return "#ff4500";      // < 15min : rouge-orange
-    return "#8b0000";                           // < 20min : rouge fonce
+    if (ageMs < 60000) return "#ffffff";
+    if (ageMs < 300000) return "#fff68f";
+    if (ageMs < 600000) return "#ffa500";
+    if (ageMs < 900000) return "#ff4500";
+    return "#8b0000";
   }
 
   function lightningOpacity(ageMs) {
@@ -1825,7 +1821,6 @@
       if (age > LIGHTNING_MAX_AGE_MS) {
         map.removeLayer(s.marker);
       } else {
-        // Mettre a jour la couleur selon l'age
         s.marker.setStyle({
           fillColor: lightningColor(age),
           fillOpacity: lightningOpacity(age),
@@ -1838,24 +1833,19 @@
   }
 
   function connectLightning() {
-    // Connexion au proxy WebSocket sur le backend Render
     var url = "wss://meteo-vaud.onrender.com/lightning";
-
     try {
       lightningWs = new WebSocket(url);
     } catch (err) {
       console.error("[foudre] echec connexion :", err);
       return;
     }
-
     lightningWs.onopen = function () {
       console.log("[foudre] connecte au proxy");
     };
-
     lightningWs.onmessage = function (event) {
       try {
         var data = JSON.parse(event.data);
-        // Message "buffer" = lot d'eclairs recents envoyes a la connexion
         if (data.type === "buffer" && Array.isArray(data.strikes)) {
           data.strikes.forEach(function (s) {
             addLightningStrike(s.lat, s.lon, s.time);
@@ -1863,34 +1853,24 @@
           cleanupLightning();
           return;
         }
-        // Eclair individuel en temps reel
         if (data.lat !== undefined && data.lon !== undefined) {
           addLightningStrike(data.lat, data.lon, data.time || Date.now());
         }
-      } catch (e) {
-        // Ignorer les messages non-JSON
-      }
+      } catch (e) {}
     };
-
     lightningWs.onerror = function () {
       console.error("[foudre] erreur WebSocket");
     };
-
     lightningWs.onclose = function () {
       console.log("[foudre] deconnecte");
-      // Reconnexion auto si toujours actif
-      if (lightningVisible) {
-        setTimeout(connectLightning, 5000);
-      }
+      if (lightningVisible) setTimeout(connectLightning, 5000);
     };
-
-    // Nettoyage periodique des vieux eclairs
     lightningCleanupTimer = setInterval(cleanupLightning, LIGHTNING_CLEANUP_MS);
   }
 
   function disconnectLightning() {
     if (lightningWs) {
-      lightningWs.onclose = null; // empecher la reconnexion auto
+      lightningWs.onclose = null;
       lightningWs.close();
       lightningWs = null;
     }
@@ -1898,7 +1878,6 @@
       clearInterval(lightningCleanupTimer);
       lightningCleanupTimer = null;
     }
-    // Retirer tous les eclairs de la carte
     lightningStrikes.forEach(function (s) { map.removeLayer(s.marker); });
     lightningStrikes = [];
   }
