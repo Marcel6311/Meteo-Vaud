@@ -1,36 +1,24 @@
 // sources/wind.js
 //
-// Construit des grilles de vent (vitesse + direction a 10m) via OpenWeatherMap,
-// converties au format attendu par leaflet-velocity (meme format que
-// grib2json / wind-js-server) : deux "bandes" (U et V, composantes
-// est-ouest et nord-sud du vent).
+// Construit la grille de vent (vitesse + direction a 10m) pour l'Europe
+// via OpenWeatherMap, convertie au format attendu par leaflet-velocity
+// (meme format que grib2json / wind-js-server) : deux "bandes" (U et V,
+// composantes est-ouest et nord-sud du vent).
 //
-// OpenWeatherMap (contrairement a Open-Meteo) n'accepte qu'un point par
-// requete, mais fonctionne par cle API (pas par IP partagee) -> pas de
-// probleme de quota partage avec d'autres utilisateurs de Render.
-// Limite gratuite : 60 requetes/minute, 1 million/mois. On espace les
-// appels a ~1.1s pour rester bien en dessous.
+// Portee volontairement limitee a l'Europe (fonctionnalite "Vent anime
+// Europe") : c'est la seule zone ou la construction a montre un
+// comportement fiable (~6-8 min, toujours terminee avant un redemarrage
+// du service). Les tentatives precedentes de couvrir d'autres continents
+// (grilles bien plus grandes) tombaient systematiquement en boucle sans
+// jamais aboutir a cause des redemarrages Render — abandonne.
 //
-// Une grille par continent (meme decoupage que les zones FIRMS), 2 degres
-// d'ecart. Chaque continent (~300-500 points) prend plusieurs minutes a
-// construire, mais ca se passe en arriere-plan au refresh (toutes les 3-6h).
+// Limite nord etendue a 71°N pour inclure toute la Finlande.
 
 const https = require("https");
 
-// Meme cle que celle deja utilisee cote client pour les tuiles/capitales
-// (cle publique, sans risque a reutiliser cote serveur)
 var OWM_API_KEY = process.env.OWM_API_KEY || "40e0a05ac561c2b71d1f2610cae0012d";
 
-var DELAY_BETWEEN_CALLS_MS = 1100; // ~54 appels/minute, sous la limite de 60/min
-
-var GRIDS = {
-  europe:        { lonMin: -12, lonMax: 32,  lonStep: 2, latMin: 34,  latMax: 62, latStep: 2 },
-  north_america: { lonMin: -170, lonMax: -50, lonStep: 2, latMin: 10,  latMax: 75, latStep: 2 },
-  south_america: { lonMin: -85,  lonMax: -30, lonStep: 2, latMin: -60, latMax: 15, latStep: 2 },
-  africa:        { lonMin: -20,  lonMax: 55,  lonStep: 2, latMin: -40, latMax: 40, latStep: 2 },
-  asia:          { lonMin: 25,   lonMax: 180, lonStep: 2, latMin: -10, latMax: 75, latStep: 2 },
-  oceania:       { lonMin: 100,  lonMax: 180, lonStep: 2, latMin: -50, latMax: -5, latStep: 2 }
-};
+var EUROPE_GRID = { lonMin: -12, lonMax: 32, lonStep: 2, latMin: 34, latMax: 71, latStep: 2 };
 
 function buildGrid(cfg) {
   var lons = [];
@@ -76,21 +64,17 @@ async function httpGetWithRetry(url, retries) {
   }
 }
 
-// Convertit vitesse (m/s, unite native OpenWeatherMap) + direction meteo
-// (d'ou vient le vent, degres) en composantes U/V, convention "vers ou
-// le vent souffle" (necessaire pour l'animation des particules).
 function toUV(speedMs, directionDeg) {
   var towardDeg = (directionDeg + 180) % 360;
   var rad = (towardDeg * Math.PI) / 180;
-  var u = speedMs * Math.sin(rad); // composante est-ouest
-  var v = speedMs * Math.cos(rad); // composante nord-sud
+  var u = speedMs * Math.sin(rad);
+  var v = speedMs * Math.cos(rad);
   return { u: u, v: v };
 }
 
-async function fetchWindGrid(cfg) {
-  var grid = buildGrid(cfg);
+async function fetchEuropeWindGrid() {
+  var grid = buildGrid(EUROPE_GRID);
 
-  // Ordre attendu par leaflet-velocity : la1 (nord) -> la2 (sud), lo1 (ouest) -> lo2 (est)
   var latsDesc = grid.lats.slice().sort(function (a, b) { return b - a; });
   var lonsAsc = grid.lons.slice().sort(function (a, b) { return a - b; });
 
@@ -104,7 +88,7 @@ async function fetchWindGrid(cfg) {
   var uData = new Array(allPoints.length).fill(0);
   var vData = new Array(allPoints.length).fill(0);
 
-  console.log("[wind] " + allPoints.length + " points a recuperer (OpenWeatherMap, ~1 point/1.1s)...");
+  console.log("[wind] Europe : " + allPoints.length + " points a recuperer (OpenWeatherMap, ~1 point/1.1s)...");
 
   for (var i = 0; i < allPoints.length; i++) {
     var p = allPoints[i];
@@ -121,7 +105,6 @@ async function fetchWindGrid(cfg) {
       }
     } catch (err) {
       console.error("[wind] echec point " + p.lat + "," + p.lon + " : " + err.message);
-      // On continue avec les autres points (0,0 = pas de vent pour celui-ci)
     }
 
     if ((i + 1) % 50 === 0) {
@@ -129,7 +112,7 @@ async function fetchWindGrid(cfg) {
     }
 
     if (i < allPoints.length - 1) {
-      await sleep(DELAY_BETWEEN_CALLS_MS);
+      await sleep(1100);
     }
   }
 
@@ -139,8 +122,8 @@ async function fetchWindGrid(cfg) {
   var header = {
     parameterUnit: "m.s-1",
     parameterNumberName: "wind",
-    dx: cfg.lonStep,
-    dy: cfg.latStep,
+    dx: EUROPE_GRID.lonStep,
+    dy: EUROPE_GRID.latStep,
     parameterCategory: 2,
     la1: latsDesc[0],
     la2: latsDesc[latsDesc.length - 1],
@@ -155,7 +138,7 @@ async function fetchWindGrid(cfg) {
   var uHeader = Object.assign({}, header, { parameterNumber: 2 });
   var vHeader = Object.assign({}, header, { parameterNumber: 3 });
 
-  console.log("[wind] grille " + nx + "x" + ny + " (" + allPoints.length + " points) construite");
+  console.log("[wind] grille Europe " + nx + "x" + ny + " (" + allPoints.length + " points) construite");
 
   return [
     { header: uHeader, data: uData },
@@ -163,13 +146,4 @@ async function fetchWindGrid(cfg) {
   ];
 }
 
-function fetchWindGridFor(region) {
-  var cfg = GRIDS[region];
-  if (!cfg) throw new Error("Region de vent inconnue : " + region);
-  return fetchWindGrid(cfg);
-}
-
-module.exports = {
-  fetchWindGridFor,
-  REGIONS: Object.keys(GRIDS)
-};
+module.exports = { fetchEuropeWindGrid };
