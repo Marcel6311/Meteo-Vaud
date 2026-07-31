@@ -43,7 +43,7 @@ function connectToBlitzortung() {
     boWs = new WebSocket(url, {
       rejectUnauthorized: false,
       headers: {
-        "Origin": "https://map.blitzortung.org",
+        "Origin": "https://map.blitzortung.org/#7/46.8/8.2",
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
       }
     });
