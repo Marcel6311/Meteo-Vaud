@@ -1,9 +1,13 @@
 // sources/wind.js
 //
-// Construit une grille de vent (vitesse + direction a 10m) sur l'Europe,
-// via Open-Meteo (gratuit, sans cle), et la convertit au format attendu
-// par leaflet-velocity (meme format que grib2json / wind-js-server) :
-// deux "bandes" (U et V, composantes est-ouest et nord-sud du vent).
+// Construit des grilles de vent (vitesse + direction a 10m) via Open-Meteo
+// (gratuit, sans cle), converties au format attendu par leaflet-velocity
+// (meme format que grib2json / wind-js-server) : deux "bandes" (U et V,
+// composantes est-ouest et nord-sud du vent).
+//
+// Deux grilles sont disponibles :
+//   - Europe : 1 degre d'ecart, precise, pour la vue rapprochee
+//   - Monde  : 4 degres d'ecart, plus large mais moins precise, pour la vue dezoomee
 //
 // Open-Meteo accepte plusieurs points par requete (latitude/longitude
 // en listes separees par virgules), ce qui evite de faire un appel par
@@ -12,16 +16,18 @@
 
 const https = require("https");
 
-// Grille : Europe elargie, un point tous les 2 degres
-var LON_MIN = -12, LON_MAX = 32, LON_STEP = 2;
-var LAT_MIN = 34, LAT_MAX = 62, LAT_STEP = 2;
 var BATCH_SIZE = 80; // points par requete Open-Meteo
 
-function buildGrid() {
+var GRIDS = {
+  europe: { lonMin: -12, lonMax: 32, lonStep: 1, latMin: 34, latMax: 62, latStep: 1 },
+  world:  { lonMin: -180, lonMax: 180, lonStep: 4, latMin: -60, latMax: 75, latStep: 4 }
+};
+
+function buildGrid(cfg) {
   var lons = [];
   var lats = [];
-  for (var lon = LON_MIN; lon <= LON_MAX; lon += LON_STEP) lons.push(lon);
-  for (var lat = LAT_MIN; lat <= LAT_MAX; lat += LAT_STEP) lats.push(lat);
+  for (var lon = cfg.lonMin; lon <= cfg.lonMax; lon += cfg.lonStep) lons.push(lon);
+  for (var lat = cfg.latMin; lat <= cfg.latMax; lat += cfg.latStep) lats.push(lat);
   return { lons: lons, lats: lats };
 }
 
@@ -73,8 +79,8 @@ function toUV(speedKmh, directionDeg) {
   return { u: u, v: v };
 }
 
-async function fetchWindGrid() {
-  var grid = buildGrid();
+async function fetchWindGrid(cfg) {
+  var grid = buildGrid(cfg);
   var allPoints = []; // { lat, lon } dans l'ordre lon-major (grib2json convention : ligne par latitude, du nord au sud)
 
   // Ordre attendu par leaflet-velocity : la1 (nord) -> la2 (sud), lo1 (ouest) -> lo2 (est)
@@ -126,8 +132,8 @@ async function fetchWindGrid() {
   var header = {
     parameterUnit: "m.s-1",
     parameterNumberName: "wind",
-    dx: LON_STEP,
-    dy: LAT_STEP,
+    dx: cfg.lonStep,
+    dy: cfg.latStep,
     parameterCategory: 2,
     la1: latsDesc[0],
     la2: latsDesc[latsDesc.length - 1],
@@ -150,4 +156,12 @@ async function fetchWindGrid() {
   ];
 }
 
-module.exports = { fetchWindGrid };
+function fetchEuropeWindGrid() {
+  return fetchWindGrid(GRIDS.europe);
+}
+
+function fetchWorldWindGrid() {
+  return fetchWindGrid(GRIDS.world);
+}
+
+module.exports = { fetchEuropeWindGrid, fetchWorldWindGrid };
