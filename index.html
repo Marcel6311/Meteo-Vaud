@@ -2839,8 +2839,27 @@
 
       var detail = document.createElement("div");
       detail.className = "locate-detail";
-      detail.textContent = r.display_name +
-        (r.type === "administrative" ? " · zone administrative" : "");
+
+      var detailParts = [r.display_name];
+      if (r.type === "administrative") detailParts.push("zone administrative");
+
+      // Population (depuis extratags)
+      var pop = r.extratags && (r.extratags.population || r.extratags["census:population"]);
+      if (pop) {
+        var popNum = parseInt(pop);
+        if (!isNaN(popNum)) {
+          detailParts.push("👤 " + popNum.toLocaleString("fr-CH") + " hab.");
+        }
+      }
+
+      // Altitude si disponible
+      var elev = r.extratags && r.extratags.ele;
+      if (elev) detailParts.push("⛰ " + elev + " m");
+
+      // Wikipedia si disponible
+      var wiki = r.extratags && (r.extratags["wikipedia"] || r.extratags["wikidata"]);
+
+      detail.textContent = detailParts.join(" · ");
 
       li.appendChild(name);
       li.appendChild(detail);
@@ -2870,7 +2889,7 @@
     els.locateResults.innerHTML = '<li class="locate-empty">Recherche...</li>';
 
     var url = NOMINATIM_URL + "?q=" + encodeURIComponent(query) +
-      "&format=json&addressdetails=0&limit=8&accept-language=fr" +
+      "&format=json&addressdetails=1&extratags=1&limit=8&accept-language=fr" +
       "&polygon_geojson=1&polygon_threshold=0.005"; // contour reel pour les zones (departements, cantons...)
 
     fetch(url, { signal: locateAbortController.signal, cache: "no-store" })
