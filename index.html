@@ -2362,15 +2362,36 @@
   // -------------------------------------------------------------------
   // Calque vent anime (leaflet-velocity, donnees Open-Meteo via backend)
   // -------------------------------------------------------------------
-  // Affiche des particules animees suivant le flux du vent (style Windy),
-  // a partir d'une grille U/V construite cote serveur toutes les 3h.
+  // Une grille par continent (meme decoupage que le backend /wind/:region).
+  // Au lieu de tout charger d'un coup, on ne recupere et affiche que la
+  // grille correspondant a l'endroit regarde sur la carte.
 
   var windLayer = null;
   var windVisible = false;
-  var windDataEurope = null;
-  var windDataWorld = null;
-  var windCurrentScope = null; // "europe" ou "world"
-  var WIND_ZOOM_THRESHOLD = 4; // en dessous de ce zoom, on bascule sur la grille mondiale
+  var windCacheByRegion = {}; // region -> grille recue du backend
+  var windCurrentRegion = null;
+
+  // Bboxes identiques a celles du backend (sources/wind.js), pour savoir
+  // quelle region correspond au centre de la carte actuellement affiche.
+  var WIND_REGION_BOUNDS = [
+    { region: "europe",        lonMin: -12,  lonMax: 32,  latMin: 34,  latMax: 62 },
+    { region: "north_america", lonMin: -170, lonMax: -50, latMin: 10,  latMax: 75 },
+    { region: "south_america", lonMin: -85,  lonMax: -30, latMin: -60, latMax: 15 },
+    { region: "africa",        lonMin: -20,  lonMax: 55,  latMin: -40, latMax: 40 },
+    { region: "asia",          lonMin: 25,   lonMax: 180, latMin: -10, latMax: 75 },
+    { region: "oceania",       lonMin: 100,  lonMax: 180, latMin: -50, latMax: -5 }
+  ];
+
+  function pickWindRegion() {
+    var c = map.getCenter();
+    for (var i = 0; i < WIND_REGION_BOUNDS.length; i++) {
+      var b = WIND_REGION_BOUNDS[i];
+      if (c.lng >= b.lonMin && c.lng <= b.lonMax && c.lat >= b.latMin && c.lat <= b.latMax) {
+        return b.region;
+      }
+    }
+    return "europe"; // par defaut si hors de toutes les zones (ex: pole, ocean ouvert)
+  }
 
   function buildWindLayer(data) {
     return L.velocityLayer({
@@ -2394,59 +2415,47 @@
     });
   }
 
-  function pickWindScope() {
-    return map.getZoom() < WIND_ZOOM_THRESHOLD ? "world" : "europe";
-  }
-
-  function renderWindForCurrentScope() {
-    var scope = pickWindScope();
-    var data = scope === "world" ? windDataWorld : windDataEurope;
-    if (!data) return; // pas encore charge pour ce scope
+  function renderWindForCurrentRegion() {
+    var region = pickWindRegion();
+    var data = windCacheByRegion[region];
+    if (!data) {
+      // Pas encore en cache : le demander au backend
+      fetchWindRegion(region);
+      return;
+    }
     if (windLayer) map.removeLayer(windLayer);
     windLayer = buildWindLayer(data);
     map.addLayer(windLayer);
-    windCurrentScope = scope;
+    windCurrentRegion = region;
+  }
+
+  function fetchWindRegion(region) {
+    fetch(API_BASE + "/wind/" + region, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (resp) {
+        if (!resp.grid) return;
+        windCacheByRegion[region] = resp.grid;
+        if (windVisible && pickWindRegion() === region) {
+          renderWindForCurrentRegion();
+        }
+      })
+      .catch(function (err) {
+        console.error("[vent] echec chargement " + region + " :", err);
+      });
   }
 
   function showWindLayer() {
-    renderWindForCurrentScope();
+    renderWindForCurrentRegion();
   }
 
   function hideWindLayer() {
     if (windLayer) map.removeLayer(windLayer);
   }
 
-  function fetchWindAndMaybeShow() {
-    fetch(API_BASE + "/wind", { cache: "no-store" })
-      .then(function (r) { return r.json(); })
-      .then(function (resp) {
-        if (!resp.grid) return;
-        windDataEurope = resp.grid;
-        if (windVisible && pickWindScope() === "europe") renderWindForCurrentScope();
-      })
-      .catch(function (err) {
-        console.error("[vent] echec chargement Europe :", err);
-      });
-
-    fetch(API_BASE + "/wind-world", { cache: "no-store" })
-      .then(function (r) { return r.json(); })
-      .then(function (resp) {
-        if (!resp.grid) return;
-        windDataWorld = resp.grid;
-        if (windVisible && pickWindScope() === "world") renderWindForCurrentScope();
-      })
-      .catch(function (err) {
-        console.error("[vent] echec chargement mondial :", err);
-      });
-  }
-
-  fetchWindAndMaybeShow();
-  setInterval(fetchWindAndMaybeShow, 3 * 60 * 60 * 1000); // 3h, aligne sur le refresh backend
-
-  // Rebasculer entre grille Europe et mondiale au changement de zoom
-  map.on("zoomend", function () {
-    if (windVisible && pickWindScope() !== windCurrentScope) {
-      renderWindForCurrentScope();
+  // Rebasculer de region si l'utilisateur deplace la carte vers un autre continent
+  map.on("moveend", function () {
+    if (windVisible && pickWindRegion() !== windCurrentRegion) {
+      renderWindForCurrentRegion();
     }
   });
 
