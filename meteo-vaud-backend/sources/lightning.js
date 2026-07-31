@@ -34,7 +34,7 @@ var wss = null;
 
 function connectToBlitzortung() {
   var server = BO_SERVERS[Math.floor(Math.random() * BO_SERVERS.length)];
-  var url = "wss://" + server + ".blitzortung.org:443/";
+  var url = "wss://" + server + ".blitzortung.org:3000/";
 
   console.log("[lightning] connexion a " + server + "...");
 
