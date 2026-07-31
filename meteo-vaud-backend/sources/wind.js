@@ -16,11 +16,11 @@
 
 const https = require("https");
 
-var BATCH_SIZE = 80; // points par requete Open-Meteo
+var BATCH_SIZE = 300; // points par requete Open-Meteo (augmente pour reduire le nombre total d'appels)
 
 var GRIDS = {
   europe: { lonMin: -12, lonMax: 32, lonStep: 1, latMin: 34, latMax: 62, latStep: 1 },
-  world:  { lonMin: -180, lonMax: 180, lonStep: 4, latMin: -60, latMax: 75, latStep: 4 }
+  world:  { lonMin: -180, lonMax: 180, lonStep: 5, latMin: -60, latMax: 75, latStep: 5 }
 };
 
 function buildGrid(cfg) {
@@ -128,10 +128,10 @@ async function fetchWindGrid(cfg) {
       vData[globalIdx] = Math.round(uv.v * 100) / 100;
     });
 
-    // Pause entre les lots pour eviter le 429 (limite Open-Meteo ~600 requetes/minute
-    // en pratique beaucoup plus restrictive sur l'offre gratuite en rafale)
+    // Pause entre les lots pour eviter le 429 (IP partagee sur Render,
+    // le quota peut deja etre entame par d'autres utilisateurs du meme range d'IP)
     if (i + BATCH_SIZE < allPoints.length) {
-      await sleep(1500);
+      await sleep(4000);
     }
   }
 
