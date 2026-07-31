@@ -1215,6 +1215,13 @@
       <div id="neoList" style="font-size: 12px;"></div>
     </div>
 
+    <!-- Éclipses -->
+    <div style="padding: 22px; border-top: 1px solid var(--hairline);">
+      <h3 style="margin: 0 0 10px 0; color: var(--amber); font-size: 14px;">🌑 Prochaines éclipses</h3>
+      <div id="eclipseCountdown" style="font-size: 13px; font-weight: bold; margin-bottom: 12px;"></div>
+      <div id="eclipseList" style="font-size: 12px;"></div>
+    </div>
+
     <!-- JWST Gallery -->
     <div style="padding: 22px; border-top: 1px solid var(--hairline);">
       <h3 style="margin: 0 0 10px 0; color: var(--amber); font-size: 14px;">🔭 Images — James Webb Space Telescope</h3>
@@ -3254,6 +3261,62 @@
       .catch(function () {
         document.getElementById("jwstGallery").innerHTML = "<em>Erreur de chargement des images JWST.</em>";
       });
+
+    // Éclipses — données prévisibles, pas besoin d'API
+    var eclipses = [
+      { date: "2026-08-12", type: "☀️ Solaire totale", desc: "Totalité : Islande, nord de l'Espagne (Bilbao, Valence, Saragosse)", visible: "🇨🇭 Partielle 90-95% depuis Lausanne", highlight: true },
+      { date: "2026-08-28", type: "🌕 Lunaire partielle", desc: "Visible depuis l'Europe, l'Afrique et les Amériques", visible: "🇨🇭 Visible depuis Lausanne", highlight: false },
+      { date: "2027-02-06", type: "☀️ Solaire annulaire", desc: "Annularité en Amérique du Sud et Afrique", visible: "🇨🇭 Non visible", highlight: false },
+      { date: "2027-02-20", type: "🌕 Lunaire pénombrale", desc: "Pénombrale, visible depuis l'Europe", visible: "🇨🇭 Visible depuis Lausanne", highlight: false },
+      { date: "2027-08-02", type: "☀️ Solaire totale", desc: "Éclipse du siècle (6m23s), totalité en Afrique du Nord et Espagne sud", visible: "🇨🇭 Partielle visible", highlight: true },
+      { date: "2028-01-12", type: "🌕 Lunaire partielle", desc: "Visible depuis l'Europe", visible: "🇨🇭 Visible depuis Lausanne", highlight: false },
+      { date: "2028-01-26", type: "☀️ Solaire annulaire", desc: "Annularité au sud de l'Espagne et du Portugal", visible: "🇨🇭 Partielle visible", highlight: false },
+      { date: "2028-07-22", type: "☀️ Solaire totale", desc: "Totalité en Australie et Nouvelle-Zélande", visible: "🇨🇭 Non visible", highlight: false },
+      { date: "2028-12-31", type: "🌕 Lunaire totale", desc: "Éclipse totale de Lune la nuit de la Saint-Sylvestre !", visible: "🇨🇭 Visible depuis Lausanne", highlight: true },
+      { date: "2029-06-12", type: "☀️ Solaire partielle", desc: "Visible depuis la Scandinavie et l'Arctique", visible: "🇨🇭 Partielle faible", highlight: false },
+      { date: "2029-06-26", type: "🌕 Lunaire totale", desc: "L'une des plus longues éclipses totales de la décennie", visible: "🇨🇭 Visible depuis Lausanne", highlight: true }
+    ];
+
+    // Filtrer : ne garder que les éclipses futures
+    var now = new Date();
+    var futureEclipses = eclipses.filter(function (e) { return new Date(e.date) > now; });
+
+    // Compte à rebours pour la prochaine
+    if (futureEclipses.length > 0) {
+      var next = futureEclipses[0];
+      var diff = new Date(next.date) - now;
+      var days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      var countdownEl = document.getElementById("eclipseCountdown");
+      if (days === 0) {
+        countdownEl.innerHTML = "🔴 AUJOURD'HUI — " + next.type + " !";
+      } else if (days <= 30) {
+        countdownEl.innerHTML = "⏳ " + next.type + " dans <span style='color:var(--amber);'>" + days + " jours</span> (" + next.date + ")";
+      } else {
+        countdownEl.innerHTML = "⏳ Prochaine : " + next.type + " dans " + days + " jours (" + next.date + ")";
+      }
+    }
+
+    // Liste
+    var eclipseHtml = '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
+    eclipseHtml += '<tr style="color:var(--amber); border-bottom:1px solid var(--hairline);">';
+    eclipseHtml += '<th style="text-align:left;padding:6px 4px;">Date</th>';
+    eclipseHtml += '<th style="text-align:left;padding:6px 4px;">Type</th>';
+    eclipseHtml += '<th style="text-align:left;padding:6px 4px;">Suisse</th></tr>';
+
+    futureEclipses.forEach(function (e) {
+      var rowStyle = e.highlight ? "background:rgba(201,138,29,0.08);" : "";
+      var dateObj = new Date(e.date);
+      var dateStr = dateObj.toLocaleDateString("fr-CH", { day: "numeric", month: "short", year: "numeric" });
+      eclipseHtml += '<tr style="border-bottom:1px solid var(--hairline);' + rowStyle + '" title="' + e.desc + '">';
+      eclipseHtml += '<td style="padding:6px 4px; white-space:nowrap;">' + dateStr + '</td>';
+      eclipseHtml += '<td style="padding:6px 4px;">' + e.type + '</td>';
+      eclipseHtml += '<td style="padding:6px 4px; font-size:11px;">' + e.visible + '</td>';
+      eclipseHtml += '</tr>';
+    });
+
+    eclipseHtml += '</table>';
+    eclipseHtml += '<div style="color:var(--text-faint); font-size:10px; margin-top:8px;">Survolez une ligne pour voir les détails. Les lignes dorées sont les événements majeurs.</div>';
+    document.getElementById("eclipseList").innerHTML = eclipseHtml;
   }
 
   function renderJwstGallery(images) {
