@@ -1000,6 +1000,17 @@
   <main>
     <div id="map">
       <img id="camsLegendImg" alt="Légende PM2.5 (µg/m³)" style="display:none; position:absolute; bottom:12px; left:12px; z-index:1000; background:#fff; padding:4px 6px; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,0.4);" />
+      <div id="rainLegend" style="display:none; position:absolute; bottom:12px; right:12px; z-index:1000; background:rgba(16,20,26,0.9); padding:8px 12px; border-radius:6px; font-size:10px; color:#fff; box-shadow:0 1px 4px rgba(0,0,0,0.4);">
+        <div style="margin-bottom:4px; font-weight:bold;">Intensité (mm/h)</div>
+        <div style="display:flex; align-items:center; gap:4px;">
+          <span style="width:16px;height:10px;background:#c8e8ff;display:inline-block;border-radius:2px;"></span> <span>&lt;0.5</span>
+          <span style="width:16px;height:10px;background:#78b4f0;display:inline-block;border-radius:2px;margin-left:4px;"></span> <span>0.5-2</span>
+          <span style="width:16px;height:10px;background:#3878d0;display:inline-block;border-radius:2px;margin-left:4px;"></span> <span>2-5</span>
+          <span style="width:16px;height:10px;background:#1840a0;display:inline-block;border-radius:2px;margin-left:4px;"></span> <span>5-10</span>
+          <span style="width:16px;height:10px;background:#c050c0;display:inline-block;border-radius:2px;margin-left:4px;"></span> <span>10-30</span>
+          <span style="width:16px;height:10px;background:#ff3030;display:inline-block;border-radius:2px;margin-left:4px;"></span> <span>&gt;30</span>
+        </div>
+      </div>
       <div class="rain-controls" id="rainControls">
         <button id="rainPrev">⏮</button>
         <button id="rainPlay">▶</button>
@@ -1868,8 +1879,22 @@
     return (rainFrames && rainFrames.radar && rainFrames.radar.past) || [];
   }
 
+  function getNowcastFrames() {
+    return (rainFrames && rainFrames.radar && rainFrames.radar.nowcast) || [];
+  }
+
+  // Toutes les frames : passé + prévisions (nowcast)
+  function getAllRainFrames() {
+    return getPastFrames().concat(getNowcastFrames());
+  }
+
+  // Index de séparation passé/prévision
+  function getPastCount() {
+    return getPastFrames().length;
+  }
+
   function showRainFrameAt(index) {
-    var frames = getPastFrames();
+    var frames = getAllRainFrames();
     if (frames.length === 0) return;
 
     rainFrameIndex = ((index % frames.length) + frames.length) % frames.length;
@@ -1889,20 +1914,28 @@
       map.addLayer(rainLayer);
     }
 
-    var isLatest = rainFrameIndex === frames.length - 1;
-    els.rainTimestamp.textContent = formatFrameTime(frame.time) + (isLatest ? " (direct)" : "");
+    var pastCount = getPastCount();
+    var isNowcast = rainFrameIndex >= pastCount;
+    var isLatest = rainFrameIndex === pastCount - 1;
+    var label = formatFrameTime(frame.time);
+    if (isLatest) label += " (direct)";
+    else if (isNowcast) label += " (prévision)";
+    els.rainTimestamp.textContent = label;
+    els.rainTimestamp.style.color = isNowcast ? "var(--amber)" : "";
     updateCoverageLayer();
   }
 
   function showRainLayer() {
     if (!rainFrames) return; // pas encore charge, rappele apres fetch (voir fetchRainFrames)
-    var frames = getPastFrames();
+    var frames = getAllRainFrames();
     if (frames.length === 0) return;
     if (rainLayer && !map.hasLayer(rainLayer)) {
       map.addLayer(rainLayer); // le calque existe mais a ete retire au dernier hideRainLayer()
     }
-    showRainFrameAt(frames.length - 1); // demarre sur l'image la plus recente
+    var pastCount = getPastCount();
+    showRainFrameAt(pastCount > 0 ? pastCount - 1 : 0); // demarre sur l'image la plus recente (direct)
     els.rainControls.classList.add("visible");
+    document.getElementById("rainLegend").style.display = "block";
   }
 
   function hideRainLayer() {
@@ -1910,6 +1943,7 @@
     if (rainLayer) map.removeLayer(rainLayer);
     hideCoverageLayer();
     els.rainControls.classList.remove("visible");
+    document.getElementById("rainLegend").style.display = "none";
   }
 
   function stepRainFrame(delta) {
@@ -1951,7 +1985,8 @@
       .then(function (data) {
         rainFrames = data;
         if (rainVisible) {
-          showRainFrameAt(getPastFrames().length - 1); // recale sur le direct apres refresh
+          var pastCount = getPastCount();
+          showRainFrameAt(pastCount > 0 ? pastCount - 1 : 0); // recale sur le direct apres refresh
         }
       })
       .catch(function () {
