@@ -19,7 +19,7 @@ var CLEANUP_INTERVAL_MS = 30 * 1000;    // nettoyage buffer toutes les 30s
 var RECONNECT_DELAY_MS = 5000;
 
 // Serveurs Blitzortung qui fonctionnent (ws3 et ws5 rejettent les connexions)
-var BO_SERVERS = ["ws1", "ws7", "ws8"];
+var BO_SERVERS = ["ws1", "ws6", "ws7"];
 
 // Buffer des eclairs recents (partage entre tous les clients)
 var strikeBuffer = [];
