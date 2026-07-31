@@ -18,8 +18,8 @@ var BUFFER_MAX_AGE_MS = 20 * 60 * 1000; // 20 minutes
 var CLEANUP_INTERVAL_MS = 30 * 1000;    // nettoyage buffer toutes les 30s
 var RECONNECT_DELAY_MS = 5000;
 
-// Serveurs Blitzortung (certains ont des certificats invalides, on ignore)
-var BO_SERVERS = ["ws1", "ws3", "ws5", "ws7", "ws8"];
+// Serveurs Blitzortung qui fonctionnent (ws3 et ws5 rejettent les connexions)
+var BO_SERVERS = ["ws1", "ws7", "ws8"];
 
 // Buffer des eclairs recents (partage entre tous les clients)
 var strikeBuffer = [];
@@ -28,6 +28,7 @@ var strikeBuffer = [];
 var boWs = null;
 var boConnected = false;
 var boReconnectTimer = null;
+var boPingTimer = null;
 
 // Serveur WebSocket pour les clients frontend
 var wss = null;
@@ -57,6 +58,13 @@ function connectToBlitzortung() {
     console.log("[lightning] connecte a " + server);
     // S'abonner a l'Europe elargie
     boWs.send(JSON.stringify({ west: -25, east: 55, north: 72, south: 25 }));
+    // Keepalive : envoyer un ping toutes les 30s pour maintenir la connexion
+    if (boPingTimer) clearInterval(boPingTimer);
+    boPingTimer = setInterval(function () {
+      if (boWs && boWs.readyState === WebSocket.OPEN) {
+        boWs.ping();
+      }
+    }, 30000);
   });
 
   boWs.on("message", function (raw) {
@@ -93,6 +101,7 @@ function connectToBlitzortung() {
 
   boWs.on("close", function (code, reason) {
     boConnected = false;
+    if (boPingTimer) { clearInterval(boPingTimer); boPingTimer = null; }
     console.log("[lightning] deconnecte de " + server + " (code: " + code + ", raison: " + (reason || "aucune") + ")");
     scheduleReconnect();
   });
