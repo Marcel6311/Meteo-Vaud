@@ -439,6 +439,19 @@ app.get("/wind-europe", (req, res) => {
   });
 });
 
+// GET /wind-europe/refresh - declenche manuellement la (re)construction de la
+// grille Europe. AUCUN declenchement automatique ailleurs dans le code :
+// seul un appel explicite a cette route lance la construction (~7-8 min).
+let windEuropeRefreshInProgress = false;
+app.get("/wind-europe/refresh", (req, res) => {
+  if (windEuropeRefreshInProgress) {
+    return res.json({ status: "deja_en_cours", message: "Une construction est deja en cours, patientez." });
+  }
+  windEuropeRefreshInProgress = true;
+  refreshWindEurope().finally(() => { windEuropeRefreshInProgress = false; });
+  res.json({ status: "demarre", message: "Construction de la grille Europe lancee (~7-8 minutes). Consultez /wind-europe pour verifier l'avancement (updatedAt)." });
+});
+
 // GET /epic - photos NASA EPIC/DSCOVR de la Terre entiere (proxy backend car l'API NASA ne supporte pas CORS)
 app.get("/epic", (req, res) => {
   res.json({
@@ -504,17 +517,14 @@ var httpServer = app.listen(PORT, async () => {
   await refreshApod();
   await refreshNeo();
   await refreshJwst();
-  // Vent Europe : reactive (31.07) apres avoir limite la portee a l'Europe
-  // uniquement (~400 points, ~7-8 min). Contrairement aux autres continents
-  // (abandonnes), l'Europe finit toujours de se construire avant un
-  // redemarrage du service, donc pas de boucle sans fin.
-  refreshWindEurope(); // pas de "await" : tourne en arriere-plan, ne bloque pas le reste du demarrage
+  // Vent Europe : PAS de refresh automatique au demarrage. Marcel controle
+  // lui-meme quand la grille se (re)construit, via GET /wind-europe/refresh.
   setInterval(refreshAll, DATA_REFRESH_MS);
   setInterval(refreshFirms, 2 * 60 * 60 * 1000); // 2h : le satellite passe ~2 fois/jour, pas besoin de plus
   setInterval(refreshApod, 6 * 60 * 60 * 1000); // 6h : la photo change 1x/jour
   setInterval(refreshNeo, 6 * 60 * 60 * 1000); // 6h : les donnees NEO bougent lentement
   setInterval(refreshJwst, 12 * 60 * 60 * 1000); // 12h : les publications NASA ne changent pas souvent
-  setInterval(refreshWindEurope, 3 * 60 * 60 * 1000); // 3h : le vent change lentement, l'Europe seule finit toujours a temps
+  // Pas de setInterval automatique pour le vent Europe : uniquement sur demande (voir /wind-europe/refresh)
   setInterval(refreshHeatwave, 3 * 60 * 60 * 1000); // 3h : la prevision OWM ne change pas assez vite pour justifier plus frequent
   setInterval(refreshEpic, 60 * 60 * 1000); // 1h : cadence proche de celle des vraies prises de vue EPIC
   setInterval(refreshAllCapitalRegions, CAPITALS_REFRESH_MS);
