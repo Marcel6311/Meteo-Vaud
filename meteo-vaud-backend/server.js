@@ -31,6 +31,7 @@ const { fetchEpicFrames } = require("./sources/epic");
 const { fetchFirmsData } = require("./sources/firms");
 const { fetchApod, fetchNeo } = require("./sources/nasa");
 const { fetchJwstImages } = require("./sources/jwst");
+const { attachToServer: attachLightning } = require("./sources/lightning");
 
 const app = express();
 app.use(cors());
@@ -466,8 +467,12 @@ app.get("/capitals/current", (req, res) => {
   });
 });
 
-app.listen(PORT, async () => {
+var httpServer = app.listen(PORT, async () => {
   console.log(`Meteo-Vaud backend demarre sur le port ${PORT}`);
+
+  // Attacher le proxy WebSocket foudre au serveur HTTP
+  attachLightning(httpServer);
+
   await refreshAll(); // premier chargement immediat au demarrage (vd + ch)
   await refreshAllCapitalRegions();
   await refreshHeatwave();
