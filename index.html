@@ -981,14 +981,7 @@
       <button class="rain-toggle" id="aerosolToggle">💨 AÉROSOLS</button>
       <button class="rain-toggle" id="camsToggle">🌫️ PM2.5</button>
       <button class="rain-toggle" id="windToggle">💨 VENT</button>
-      <select id="windRegionSelect" style="background:#1a1f2a; color:#fff; border:1px solid var(--hairline); border-radius:6px; padding:6px 8px; font-size:12px; font-family:inherit;">
-        <option value="europe" selected>Europe</option>
-        <option value="north_america">Amérique du Nord</option>
-        <option value="south_america">Amérique du Sud</option>
-        <option value="africa">Afrique</option>
-        <option value="asia">Asie</option>
-        <option value="oceania">Océanie / Australie</option>
-      </select>
+      <button class="rain-toggle" id="windEuropeToggle">🌀 VENT ANIMÉ EUROPE</button>
       <button class="rain-toggle" id="snowToggle">❄️ NEIGE</button>
       <button class="rain-toggle" id="eonetToggle">🌎 ÉVÉNEMENTS</button>
       <button class="rain-toggle" id="effisToggle">🔥🇪🇺 FEUX UE (7j)</button>
@@ -1325,7 +1318,7 @@
     effisToggle: document.getElementById("effisToggle"),
     camsToggle: document.getElementById("camsToggle"),
     windToggle: document.getElementById("windToggle"),
-    windRegionSelect: document.getElementById("windRegionSelect"),
+    windEuropeToggle: document.getElementById("windEuropeToggle"),
     epicToggle: document.getElementById("epicToggle"),
     epicOverlay: document.getElementById("epicOverlay"),
     astroToggle: document.getElementById("astroToggle"),
@@ -2369,21 +2362,57 @@
   });
 
   // -------------------------------------------------------------------
-  // Calque vent anime (leaflet-velocity, donnees OpenWeatherMap via backend)
+  // Vent — deux calques independants, chacun activable separement
   // -------------------------------------------------------------------
-  // Selection manuelle du continent via le menu deroulant (par defaut Europe).
-  // Chaque continent est une grille separee cote backend (/wind/:region).
+  // 1) "VENT" : calque statique colore OpenWeatherMap (tuiles), couvre le
+  //    monde entier instantanement, mis a jour par OWM toutes les heures.
+  // 2) "VENT ANIME EUROPE" : particules animees (leaflet-velocity), grille
+  //    construite cote backend, precise mais limitee a l'Europe (jusqu'a
+  //    71°N pour inclure la Finlande).
+  // Les deux peuvent etre affiches en meme temps, l'un par-dessus l'autre.
 
-  var windLayer = null;
-  var windVisible = false;
-  var windCacheByRegion = {}; // region -> grille recue du backend
-  var windCurrentRegion = "europe";
+  // --- 1) Calque statique mondial ---
+  var windStaticLayer = null;
+  var windStaticVisible = false;
 
-  function buildWindLayer(data) {
+  function buildWindStaticLayer() {
+    return L.tileLayer("https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=" + OWM_API_KEY, {
+      opacity: 0.6,
+      zIndex: 440, // sous le calque anime (450)
+      noWrap: true,
+      attribution: "OpenWeatherMap"
+    });
+  }
+
+  function showWindStaticLayer() {
+    if (!windStaticLayer) windStaticLayer = buildWindStaticLayer();
+    if (!map.hasLayer(windStaticLayer)) map.addLayer(windStaticLayer);
+  }
+
+  function hideWindStaticLayer() {
+    if (windStaticLayer) map.removeLayer(windStaticLayer);
+  }
+
+  els.windToggle.addEventListener("click", function () {
+    windStaticVisible = !windStaticVisible;
+    els.windToggle.classList.toggle("active", windStaticVisible);
+    if (windStaticVisible) {
+      showWindStaticLayer();
+    } else {
+      hideWindStaticLayer();
+    }
+  });
+
+  // --- 2) Calque anime Europe (particules) ---
+  var windEuropeLayer = null;
+  var windEuropeVisible = false;
+  var windEuropeData = null;
+
+  function buildWindEuropeLayer(data) {
     return L.velocityLayer({
       displayValues: true,
       displayOptions: {
-        velocityType: "Vent",
+        velocityType: "Vent Europe",
         position: "bottomleft",
         emptyString: "Pas de données vent ici",
         angleConvention: "bearingCW",
@@ -2393,72 +2422,57 @@
       },
       data: data,
       minVelocity: 0,
-      maxVelocity: 17, // ~60 km/h en m/s - au-dela, meme couleur (tempete)
+      maxVelocity: 17, // ~60 km/h en m/s
       velocityScale: 0.01,
       colorScale: ["#3288bd", "#66c2a5", "#abdda4", "#fee08b", "#fdae61", "#f46d43", "#d53e4f"],
       opacity: 0.85,
-      zIndex: 450 // sous la neige (460), au-dessus de la temperature (400)
+      zIndex: 450 // au-dessus du calque statique (440)
     });
   }
 
-  function renderWindRegion(region) {
-    var data = windCacheByRegion[region];
-    if (!data) {
-      fetchWindRegion(region); // pas encore en cache, on demande et on affichera au retour
+  function showWindEuropeLayer() {
+    if (!windEuropeData) {
+      fetchWindEurope();
       return;
     }
-    if (windLayer) map.removeLayer(windLayer);
-    windLayer = buildWindLayer(data);
-    map.addLayer(windLayer);
+    if (windEuropeLayer) map.removeLayer(windEuropeLayer);
+    windEuropeLayer = buildWindEuropeLayer(windEuropeData);
+    map.addLayer(windEuropeLayer);
   }
 
-  function fetchWindRegion(region) {
-    els.windRegionSelect.disabled = true;
-    var originalLabel = els.windToggle.textContent;
-    els.windToggle.textContent = "💨 VENT (chargement…)";
-    fetch(API_BASE + "/wind/" + region, { cache: "no-store" })
+  function hideWindEuropeLayer() {
+    if (windEuropeLayer) map.removeLayer(windEuropeLayer);
+  }
+
+  function fetchWindEurope() {
+    var originalLabel = els.windEuropeToggle.textContent;
+    els.windEuropeToggle.textContent = "🌀 VENT ANIMÉ EUROPE (chargement…)";
+    fetch(API_BASE + "/wind-europe", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (resp) {
-        els.windRegionSelect.disabled = false;
-        els.windToggle.textContent = originalLabel;
         if (!resp.grid) {
-          console.log("[vent] grille " + region + " pas encore prete (backend en cours de construction)");
+          els.windEuropeToggle.textContent = "🌀 VENT ANIMÉ EUROPE (pas encore prêt)";
+          setTimeout(function () { els.windEuropeToggle.textContent = originalLabel; }, 4000);
+          console.log("[vent europe] grille pas encore prete (backend en cours de construction)");
           return;
         }
-        windCacheByRegion[region] = resp.grid;
-        if (windVisible && windCurrentRegion === region) {
-          renderWindRegion(region);
-        }
+        els.windEuropeToggle.textContent = originalLabel;
+        windEuropeData = resp.grid;
+        if (windEuropeVisible) showWindEuropeLayer();
       })
       .catch(function (err) {
-        els.windRegionSelect.disabled = false;
-        els.windToggle.textContent = originalLabel;
-        console.error("[vent] echec chargement " + region + " :", err);
+        els.windEuropeToggle.textContent = originalLabel;
+        console.error("[vent europe] echec chargement :", err);
       });
   }
 
-  function showWindLayer() {
-    renderWindRegion(windCurrentRegion);
-  }
-
-  function hideWindLayer() {
-    if (windLayer) map.removeLayer(windLayer);
-  }
-
-  els.windRegionSelect.addEventListener("change", function () {
-    windCurrentRegion = this.value;
-    if (windVisible) {
-      renderWindRegion(windCurrentRegion);
-    }
-  });
-
-  els.windToggle.addEventListener("click", function () {
-    windVisible = !windVisible;
-    els.windToggle.classList.toggle("active", windVisible);
-    if (windVisible) {
-      showWindLayer();
+  els.windEuropeToggle.addEventListener("click", function () {
+    windEuropeVisible = !windEuropeVisible;
+    els.windEuropeToggle.classList.toggle("active", windEuropeVisible);
+    if (windEuropeVisible) {
+      showWindEuropeLayer();
     } else {
-      hideWindLayer();
+      hideWindEuropeLayer();
     }
   });
 
