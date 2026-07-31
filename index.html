@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-velocity@1.9.2/dist/leaflet-velocity.min.css">
 <style>
   :root {
     --bg: #10141A;
@@ -979,6 +980,7 @@
       <button class="rain-toggle" id="satelliteToggle">🛰 SATELLITE</button>
       <button class="rain-toggle" id="aerosolToggle">💨 AÉROSOLS</button>
       <button class="rain-toggle" id="camsToggle">🌫️ PM2.5</button>
+      <button class="rain-toggle" id="windToggle">💨 VENT</button>
       <button class="rain-toggle" id="snowToggle">❄️ NEIGE</button>
       <button class="rain-toggle" id="eonetToggle">🌎 ÉVÉNEMENTS</button>
       <button class="rain-toggle" id="effisToggle">🔥🇪🇺 FEUX UE (7j)</button>
@@ -1276,6 +1278,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-velocity@1.9.2/dist/leaflet-velocity.min.js"></script>
 <script>
 (function () {
   "use strict";
@@ -1313,6 +1316,7 @@
     eonetToggle: document.getElementById("eonetToggle"),
     effisToggle: document.getElementById("effisToggle"),
     camsToggle: document.getElementById("camsToggle"),
+    windToggle: document.getElementById("windToggle"),
     epicToggle: document.getElementById("epicToggle"),
     epicOverlay: document.getElementById("epicOverlay"),
     astroToggle: document.getElementById("astroToggle"),
@@ -2352,6 +2356,80 @@
       showCamsLayer();
     } else {
       hideCamsLayer();
+    }
+  });
+
+  // -------------------------------------------------------------------
+  // Calque vent anime (leaflet-velocity, donnees Open-Meteo via backend)
+  // -------------------------------------------------------------------
+  // Affiche des particules animees suivant le flux du vent (style Windy),
+  // a partir d'une grille U/V construite cote serveur toutes les 3h.
+
+  var windLayer = null;
+  var windVisible = false;
+  var windData = null;
+
+  function buildWindLayer(data) {
+    return L.velocityLayer({
+      displayValues: true,
+      displayOptions: {
+        velocityType: "Vent",
+        position: "bottomleft",
+        emptyString: "Pas de données vent ici",
+        angleConvention: "bearingCW",
+        speedUnit: "km/h",
+        directionString: "Direction",
+        speedString: "Vitesse"
+      },
+      data: data,
+      minVelocity: 0,
+      maxVelocity: 17, // ~60 km/h en m/s - au-dela, meme couleur (tempete)
+      velocityScale: 0.01,
+      colorScale: ["#3288bd", "#66c2a5", "#abdda4", "#fee08b", "#fdae61", "#f46d43", "#d53e4f"],
+      opacity: 0.85,
+      zIndex: 450 // sous la neige (460), au-dessus de la temperature (400)
+    });
+  }
+
+  function showWindLayer() {
+    if (!windData) return; // pas encore charge
+    if (!windLayer) windLayer = buildWindLayer(windData);
+    if (!map.hasLayer(windLayer)) map.addLayer(windLayer);
+  }
+
+  function hideWindLayer() {
+    if (windLayer) map.removeLayer(windLayer);
+  }
+
+  function fetchWindAndMaybeShow() {
+    fetch(API_BASE + "/wind", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (resp) {
+        if (!resp.grid) return;
+        // Convertir les vitesses m/s (fournies par le backend) en km/h pour l'affichage,
+        // car leaflet-velocity utilise directement les unites du header sans conversion.
+        windData = resp.grid;
+        if (windVisible) {
+          hideWindLayer();
+          windLayer = buildWindLayer(windData);
+          map.addLayer(windLayer);
+        }
+      })
+      .catch(function (err) {
+        console.error("[vent] echec chargement :", err);
+      });
+  }
+
+  fetchWindAndMaybeShow();
+  setInterval(fetchWindAndMaybeShow, 3 * 60 * 60 * 1000); // 3h, aligne sur le refresh backend
+
+  els.windToggle.addEventListener("click", function () {
+    windVisible = !windVisible;
+    els.windToggle.classList.toggle("active", windVisible);
+    if (windVisible) {
+      showWindLayer();
+    } else {
+      hideWindLayer();
     }
   });
 
