@@ -981,6 +981,14 @@
       <button class="rain-toggle" id="aerosolToggle">💨 AÉROSOLS</button>
       <button class="rain-toggle" id="camsToggle">🌫️ PM2.5</button>
       <button class="rain-toggle" id="windToggle">💨 VENT</button>
+      <select id="windRegionSelect" style="background:#1a1f2a; color:#fff; border:1px solid var(--hairline); border-radius:6px; padding:6px 8px; font-size:12px; font-family:inherit;">
+        <option value="europe" selected>Europe</option>
+        <option value="north_america">Amérique du Nord</option>
+        <option value="south_america">Amérique du Sud</option>
+        <option value="africa">Afrique</option>
+        <option value="asia">Asie</option>
+        <option value="oceania">Océanie / Australie</option>
+      </select>
       <button class="rain-toggle" id="snowToggle">❄️ NEIGE</button>
       <button class="rain-toggle" id="eonetToggle">🌎 ÉVÉNEMENTS</button>
       <button class="rain-toggle" id="effisToggle">🔥🇪🇺 FEUX UE (7j)</button>
@@ -1317,6 +1325,7 @@
     effisToggle: document.getElementById("effisToggle"),
     camsToggle: document.getElementById("camsToggle"),
     windToggle: document.getElementById("windToggle"),
+    windRegionSelect: document.getElementById("windRegionSelect"),
     epicToggle: document.getElementById("epicToggle"),
     epicOverlay: document.getElementById("epicOverlay"),
     astroToggle: document.getElementById("astroToggle"),
@@ -2360,38 +2369,15 @@
   });
 
   // -------------------------------------------------------------------
-  // Calque vent anime (leaflet-velocity, donnees Open-Meteo via backend)
+  // Calque vent anime (leaflet-velocity, donnees OpenWeatherMap via backend)
   // -------------------------------------------------------------------
-  // Une grille par continent (meme decoupage que le backend /wind/:region).
-  // Au lieu de tout charger d'un coup, on ne recupere et affiche que la
-  // grille correspondant a l'endroit regarde sur la carte.
+  // Selection manuelle du continent via le menu deroulant (par defaut Europe).
+  // Chaque continent est une grille separee cote backend (/wind/:region).
 
   var windLayer = null;
   var windVisible = false;
   var windCacheByRegion = {}; // region -> grille recue du backend
-  var windCurrentRegion = null;
-
-  // Bboxes identiques a celles du backend (sources/wind.js), pour savoir
-  // quelle region correspond au centre de la carte actuellement affiche.
-  var WIND_REGION_BOUNDS = [
-    { region: "europe",        lonMin: -12,  lonMax: 32,  latMin: 34,  latMax: 62 },
-    { region: "north_america", lonMin: -170, lonMax: -50, latMin: 10,  latMax: 75 },
-    { region: "south_america", lonMin: -85,  lonMax: -30, latMin: -60, latMax: 15 },
-    { region: "africa",        lonMin: -20,  lonMax: 55,  latMin: -40, latMax: 40 },
-    { region: "asia",          lonMin: 25,   lonMax: 180, latMin: -10, latMax: 75 },
-    { region: "oceania",       lonMin: 100,  lonMax: 180, latMin: -50, latMax: -5 }
-  ];
-
-  function pickWindRegion() {
-    var c = map.getCenter();
-    for (var i = 0; i < WIND_REGION_BOUNDS.length; i++) {
-      var b = WIND_REGION_BOUNDS[i];
-      if (c.lng >= b.lonMin && c.lng <= b.lonMax && c.lat >= b.latMin && c.lat <= b.latMax) {
-        return b.region;
-      }
-    }
-    return "europe"; // par defaut si hors de toutes les zones (ex: pole, ocean ouvert)
-  }
+  var windCurrentRegion = "europe";
 
   function buildWindLayer(data) {
     return L.velocityLayer({
@@ -2415,47 +2401,54 @@
     });
   }
 
-  function renderWindForCurrentRegion() {
-    var region = pickWindRegion();
+  function renderWindRegion(region) {
     var data = windCacheByRegion[region];
     if (!data) {
-      // Pas encore en cache : le demander au backend
-      fetchWindRegion(region);
+      fetchWindRegion(region); // pas encore en cache, on demande et on affichera au retour
       return;
     }
     if (windLayer) map.removeLayer(windLayer);
     windLayer = buildWindLayer(data);
     map.addLayer(windLayer);
-    windCurrentRegion = region;
   }
 
   function fetchWindRegion(region) {
+    els.windRegionSelect.disabled = true;
+    var originalLabel = els.windToggle.textContent;
+    els.windToggle.textContent = "💨 VENT (chargement…)";
     fetch(API_BASE + "/wind/" + region, { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (resp) {
-        if (!resp.grid) return;
+        els.windRegionSelect.disabled = false;
+        els.windToggle.textContent = originalLabel;
+        if (!resp.grid) {
+          console.log("[vent] grille " + region + " pas encore prete (backend en cours de construction)");
+          return;
+        }
         windCacheByRegion[region] = resp.grid;
-        if (windVisible && pickWindRegion() === region) {
-          renderWindForCurrentRegion();
+        if (windVisible && windCurrentRegion === region) {
+          renderWindRegion(region);
         }
       })
       .catch(function (err) {
+        els.windRegionSelect.disabled = false;
+        els.windToggle.textContent = originalLabel;
         console.error("[vent] echec chargement " + region + " :", err);
       });
   }
 
   function showWindLayer() {
-    renderWindForCurrentRegion();
+    renderWindRegion(windCurrentRegion);
   }
 
   function hideWindLayer() {
     if (windLayer) map.removeLayer(windLayer);
   }
 
-  // Rebasculer de region si l'utilisateur deplace la carte vers un autre continent
-  map.on("moveend", function () {
-    if (windVisible && pickWindRegion() !== windCurrentRegion) {
-      renderWindForCurrentRegion();
+  els.windRegionSelect.addEventListener("change", function () {
+    windCurrentRegion = this.value;
+    if (windVisible) {
+      renderWindRegion(windCurrentRegion);
     }
   });
 
