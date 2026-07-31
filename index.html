@@ -1788,9 +1788,6 @@
   var LIGHTNING_CLEANUP_MS = 15 * 1000; // nettoyage toutes les 15s
   var lightningRenderer = L.canvas({ padding: 0.5 });
 
-  // Serveurs WebSocket Blitzortung (choisir au hasard)
-  var BO_SERVERS = ["ws1", "ws3", "ws5", "ws7", "ws8"];
-
   function lightningColor(ageMs) {
     if (ageMs < 60000) return "#ffffff";       // < 1min : blanc
     if (ageMs < 300000) return "#fff68f";      // < 5min : jaune clair
@@ -1841,8 +1838,8 @@
   }
 
   function connectLightning() {
-    var server = BO_SERVERS[Math.floor(Math.random() * BO_SERVERS.length)];
-    var url = "wss://" + server + ".blitzortung.org:443/";
+    // Connexion au proxy WebSocket sur le backend Render
+    var url = "wss://meteo-vaud.onrender.com/lightning";
 
     try {
       lightningWs = new WebSocket(url);
@@ -1852,20 +1849,26 @@
     }
 
     lightningWs.onopen = function () {
-      console.log("[foudre] connecte a " + server);
-      // S'abonner a l'Europe elargie (meme bbox que FIRMS)
-      lightningWs.send(JSON.stringify({ west: -25, east: 55, north: 72, south: 25 }));
+      console.log("[foudre] connecte au proxy");
     };
 
     lightningWs.onmessage = function (event) {
       try {
         var data = JSON.parse(event.data);
+        // Message "buffer" = lot d'eclairs recents envoyes a la connexion
+        if (data.type === "buffer" && Array.isArray(data.strikes)) {
+          data.strikes.forEach(function (s) {
+            addLightningStrike(s.lat, s.lon, s.time);
+          });
+          cleanupLightning();
+          return;
+        }
+        // Eclair individuel en temps reel
         if (data.lat !== undefined && data.lon !== undefined) {
-          var t = data.time ? data.time / 1000000 : Date.now(); // nanoseconds -> ms
-          addLightningStrike(data.lat, data.lon, t);
+          addLightningStrike(data.lat, data.lon, data.time || Date.now());
         }
       } catch (e) {
-        // Certains messages sont des infos serveur, pas des eclairs
+        // Ignorer les messages non-JSON
       }
     };
 
@@ -1877,7 +1880,7 @@
       console.log("[foudre] deconnecte");
       // Reconnexion auto si toujours actif
       if (lightningVisible) {
-        setTimeout(connectLightning, 3000);
+        setTimeout(connectLightning, 5000);
       }
     };
 
