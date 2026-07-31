@@ -31,7 +31,7 @@ const { fetchEpicFrames } = require("./sources/epic");
 const { fetchFirmsData } = require("./sources/firms");
 const { fetchApod, fetchNeo } = require("./sources/nasa");
 const { fetchJwstImages } = require("./sources/jwst");
-const { fetchEuropeWindGrid, fetchWorldWindGrid } = require("./sources/wind");
+const { fetchWindGridFor, REGIONS: WIND_REGIONS } = require("./sources/wind");
 
 const app = express();
 app.use(cors());
@@ -83,8 +83,10 @@ let firmsCache = { updatedAt: null, detections: [], lastError: null };
 let apodCache = { updatedAt: null, apod: null, lastError: null };
 let neoCache = { updatedAt: null, asteroids: [], lastError: null };
 let jwstCache = { updatedAt: null, images: [], lastError: null };
-let windCache = { updatedAt: null, grid: null, lastError: null };
-let windWorldCache = { updatedAt: null, grid: null, lastError: null };
+let windCaches = {}; // { europe: {...}, north_america: {...}, ... }
+WIND_REGIONS.forEach((region) => {
+  windCaches[region] = { updatedAt: null, grid: null, lastError: null };
+});
 
 function pickScope(req) {
   const scope = (req.query.scope || "vd").toLowerCase();
@@ -239,33 +241,26 @@ async function refreshJwst() {
   }
 }
 
-async function refreshWind() {
+async function refreshWindRegion(region) {
   try {
-    const grid = await fetchEuropeWindGrid();
-    windCache = {
+    const grid = await fetchWindGridFor(region);
+    windCaches[region] = {
       updatedAt: new Date().toISOString(),
       grid,
       lastError: null
     };
-    console.log(`[refresh:wind] grille Europe mise a jour (${windCache.updatedAt})`);
+    console.log(`[refresh:wind:${region}] grille mise a jour (${windCaches[region].updatedAt})`);
   } catch (err) {
-    windCache.lastError = err.message;
-    console.error("[refresh:wind] echec :", err.message);
+    windCaches[region].lastError = err.message;
+    console.error(`[refresh:wind:${region}] echec :`, err.message);
   }
 }
 
-async function refreshWindWorld() {
-  try {
-    const grid = await fetchWorldWindGrid();
-    windWorldCache = {
-      updatedAt: new Date().toISOString(),
-      grid,
-      lastError: null
-    };
-    console.log(`[refresh:wind-world] grille mondiale mise a jour (${windWorldCache.updatedAt})`);
-  } catch (err) {
-    windWorldCache.lastError = err.message;
-    console.error("[refresh:wind-world] echec :", err.message);
+async function refreshAllWindRegions() {
+  // Sequentiel plutot qu'en parallele : chaque continent est deja plusieurs
+  // requetes Open-Meteo, on ne veut pas les cumuler toutes en meme temps.
+  for (const region of WIND_REGIONS) {
+    await refreshWindRegion(region);
   }
 }
 
@@ -444,26 +439,27 @@ app.get("/jwst", (req, res) => {
   });
 });
 
-// GET /wind - grille de vent (vitesse/direction 10m) au format leaflet-velocity
-// Source : Open-Meteo (gratuit, sans cle). Rafraichi toutes les 3h.
-app.get("/wind", (req, res) => {
+// GET /wind/:region - grille de vent par continent (vitesse/direction 10m),
+// au format leaflet-velocity. Regions : europe, north_america, south_america,
+// africa, asia, oceania. Source : Open-Meteo (gratuit, sans cle).
+app.get("/wind/:region", (req, res) => {
+  const region = req.params.region;
+  const cache = windCaches[region];
+  if (!cache) {
+    return res.status(404).json({ error: "Region inconnue", regions: WIND_REGIONS });
+  }
   res.json({
-    source: "Open-Meteo (grille Europe, 1 degre, construite cote serveur)",
-    updatedAt: windCache.updatedAt,
-    lastError: windCache.lastError,
-    grid: windCache.grid
+    source: "Open-Meteo (grille " + region + ", 2 degres, construite cote serveur)",
+    region,
+    updatedAt: cache.updatedAt,
+    lastError: cache.lastError,
+    grid: cache.grid
   });
 });
 
-// GET /wind-world - grille de vent mondiale (moins precise, pour vue dezoomee)
-// Rafraichi toutes les 3h.
-app.get("/wind-world", (req, res) => {
-  res.json({
-    source: "Open-Meteo (grille mondiale, 4 degres, construite cote serveur)",
-    updatedAt: windWorldCache.updatedAt,
-    lastError: windWorldCache.lastError,
-    grid: windWorldCache.grid
-  });
+// GET /wind-regions - liste des regions de vent disponibles
+app.get("/wind-regions", (req, res) => {
+  res.json({ regions: WIND_REGIONS });
 });
 
 // GET /epic - photos NASA EPIC/DSCOVR de la Terre entiere (proxy backend car l'API NASA ne supporte pas CORS)
@@ -531,15 +527,13 @@ var httpServer = app.listen(PORT, async () => {
   await refreshApod();
   await refreshNeo();
   await refreshJwst();
-  await refreshWind();
-  await refreshWindWorld();
+  await refreshAllWindRegions();
   setInterval(refreshAll, DATA_REFRESH_MS);
   setInterval(refreshFirms, 2 * 60 * 60 * 1000); // 2h : le satellite passe ~2 fois/jour, pas besoin de plus
   setInterval(refreshApod, 6 * 60 * 60 * 1000); // 6h : la photo change 1x/jour
   setInterval(refreshNeo, 6 * 60 * 60 * 1000); // 6h : les donnees NEO bougent lentement
   setInterval(refreshJwst, 12 * 60 * 60 * 1000); // 12h : les publications NASA ne changent pas souvent
-  setInterval(refreshWind, 3 * 60 * 60 * 1000); // 3h : le vent change lentement
-  setInterval(refreshWindWorld, 3 * 60 * 60 * 1000); // 3h
+  setInterval(refreshAllWindRegions, 3 * 60 * 60 * 1000); // 3h : le vent change lentement, un continent apres l'autre
   setInterval(refreshHeatwave, 3 * 60 * 60 * 1000); // 3h : la prevision OWM ne change pas assez vite pour justifier plus frequent
   setInterval(refreshEpic, 60 * 60 * 1000); // 1h : cadence proche de celle des vraies prises de vue EPIC
   setInterval(refreshAllCapitalRegions, CAPITALS_REFRESH_MS);
