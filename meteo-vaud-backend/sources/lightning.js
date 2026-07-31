@@ -34,13 +34,17 @@ var wss = null;
 
 function connectToBlitzortung() {
   var server = BO_SERVERS[Math.floor(Math.random() * BO_SERVERS.length)];
-  var url = "wss://" + server + ".blitzortung.org:3000/";
+  var url = "wss://" + server + ".blitzortung.org:443/";
 
-  console.log("[lightning] connexion a " + server + "...");
+  console.log("[lightning] connexion a " + server + ":443...");
 
   try {
     boWs = new WebSocket(url, {
-      rejectUnauthorized: false // ignore les certificats invalides cote serveur
+      rejectUnauthorized: false,
+      headers: {
+        "Origin": "https://map.blitzortung.org",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+      }
     });
   } catch (err) {
     console.error("[lightning] echec creation WS :", err.message);
@@ -84,12 +88,12 @@ function connectToBlitzortung() {
   });
 
   boWs.on("error", function (err) {
-    console.error("[lightning] erreur WS :", err.message);
+    console.error("[lightning] erreur WS " + server + " :", err.message || err);
   });
 
-  boWs.on("close", function () {
+  boWs.on("close", function (code, reason) {
     boConnected = false;
-    console.log("[lightning] deconnecte");
+    console.log("[lightning] deconnecte de " + server + " (code: " + code + ", raison: " + (reason || "aucune") + ")");
     scheduleReconnect();
   });
 }
