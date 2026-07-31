@@ -58,9 +58,11 @@ async function httpGetWithRetry(url, retries) {
     try {
       return await httpGet(url);
     } catch (err) {
+      var is429 = err.message.indexOf("429") !== -1;
       if (attempt === retries) throw err;
-      console.log("[wind] echec tentative " + (attempt + 1) + " — retry dans " + (delays[attempt] / 1000) + "s");
-      await sleep(delays[attempt]);
+      var delay = is429 ? 65000 : (delays[attempt] || 10000); // 429 : attendre 65s comme demande par l'API
+      console.log("[wind] echec tentative " + (attempt + 1) + " — retry dans " + (delay / 1000) + "s" + (is429 ? " (limite de requetes atteinte)" : ""));
+      await sleep(delay);
     }
   }
 }
@@ -96,7 +98,8 @@ async function fetchWindGrid(cfg) {
   var uData = new Array(allPoints.length).fill(0);
   var vData = new Array(allPoints.length).fill(0);
 
-  // Traiter par lots pour ne pas surcharger une seule requete
+  // Traiter par lots pour ne pas surcharger une seule requete, avec une
+  // pause entre chaque lot pour respecter la limite de requetes/minute d'Open-Meteo
   for (var i = 0; i < allPoints.length; i += BATCH_SIZE) {
     var batch = allPoints.slice(i, i + BATCH_SIZE);
     var latStr = batch.map(function (p) { return p.lat; }).join(",");
@@ -108,7 +111,7 @@ async function fetchWindGrid(cfg) {
 
     console.log("[wind] lot " + (Math.floor(i / BATCH_SIZE) + 1) + "/" + Math.ceil(allPoints.length / BATCH_SIZE) + " (" + batch.length + " points)...");
 
-    var raw = await httpGetWithRetry(url, 2);
+    var raw = await httpGetWithRetry(url, 3);
     var data = JSON.parse(raw);
 
     // Reponse multi-points : un tableau d'objets (un par point) quand plusieurs lat/lon sont passes
@@ -124,6 +127,12 @@ async function fetchWindGrid(cfg) {
       uData[globalIdx] = Math.round(uv.u * 100) / 100;
       vData[globalIdx] = Math.round(uv.v * 100) / 100;
     });
+
+    // Pause entre les lots pour eviter le 429 (limite Open-Meteo ~600 requetes/minute
+    // en pratique beaucoup plus restrictive sur l'offre gratuite en rafale)
+    if (i + BATCH_SIZE < allPoints.length) {
+      await sleep(1500);
+    }
   }
 
   var nx = lonsAsc.length;
