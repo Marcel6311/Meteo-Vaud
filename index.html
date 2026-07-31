@@ -973,6 +973,7 @@
         <button data-scope="ch">SUISSE</button>
       </div>
       <button class="rain-toggle" id="rainToggle">☂ PLUIE</button>
+      <button class="rain-toggle" id="lightningToggle">⚡ FOUDRE</button>
       <button class="rain-toggle" id="tempToggle">🌡 TEMPERATURE</button>
       <button class="rain-toggle" id="fireToggle">🔥 INCENDIES</button>
       <button class="rain-toggle" id="satelliteToggle">🛰 SATELLITE</button>
@@ -1303,6 +1304,7 @@
     dClose: document.getElementById("dClose"),
     scopeToggle: document.getElementById("scopeToggle"),
     rainToggle: document.getElementById("rainToggle"),
+    lightningToggle: document.getElementById("lightningToggle"),
     tempToggle: document.getElementById("tempToggle"),
     fireToggle: document.getElementById("fireToggle"),
     satelliteToggle: document.getElementById("satelliteToggle"),
@@ -1768,6 +1770,144 @@
 
   els.dClose.addEventListener("click", function () {
     els.detail.classList.remove("open");
+  });
+
+  // -------------------------------------------------------------------
+  // Foudre en temps reel (Blitzortung.org via WebSocket)
+  // -------------------------------------------------------------------
+  // Connexion directe au WebSocket Blitzortung. Chaque eclair est affiche
+  // sur la carte avec une couleur qui evolue selon son age :
+  //   blanc = instant, jaune = 5min, orange = 10min, rouge = 15min, retire a 20min.
+  // Usage non commercial, gratuit, sans cle.
+
+  var lightningVisible = false;
+  var lightningWs = null;
+  var lightningStrikes = []; // { marker, time }
+  var lightningCleanupTimer = null;
+  var LIGHTNING_MAX_AGE_MS = 20 * 60 * 1000; // 20 minutes
+  var LIGHTNING_CLEANUP_MS = 15 * 1000; // nettoyage toutes les 15s
+  var lightningRenderer = L.canvas({ padding: 0.5 });
+
+  // Serveurs WebSocket Blitzortung (choisir au hasard)
+  var BO_SERVERS = ["ws1", "ws3", "ws5", "ws7", "ws8"];
+
+  function lightningColor(ageMs) {
+    if (ageMs < 60000) return "#ffffff";       // < 1min : blanc
+    if (ageMs < 300000) return "#fff68f";      // < 5min : jaune clair
+    if (ageMs < 600000) return "#ffa500";      // < 10min : orange
+    if (ageMs < 900000) return "#ff4500";      // < 15min : rouge-orange
+    return "#8b0000";                           // < 20min : rouge fonce
+  }
+
+  function lightningOpacity(ageMs) {
+    if (ageMs < 60000) return 1.0;
+    if (ageMs < 300000) return 0.85;
+    if (ageMs < 600000) return 0.65;
+    if (ageMs < 900000) return 0.45;
+    return 0.25;
+  }
+
+  function addLightningStrike(lat, lon, time) {
+    var m = L.circleMarker([lat, lon], {
+      radius: 4,
+      fillColor: "#ffffff",
+      fillOpacity: 1.0,
+      color: "#ffffff",
+      weight: 1,
+      renderer: lightningRenderer,
+      pane: "markerPane"
+    }).addTo(map);
+    lightningStrikes.push({ marker: m, time: time });
+  }
+
+  function cleanupLightning() {
+    var now = Date.now();
+    var fresh = [];
+    lightningStrikes.forEach(function (s) {
+      var age = now - s.time;
+      if (age > LIGHTNING_MAX_AGE_MS) {
+        map.removeLayer(s.marker);
+      } else {
+        // Mettre a jour la couleur selon l'age
+        s.marker.setStyle({
+          fillColor: lightningColor(age),
+          fillOpacity: lightningOpacity(age),
+          color: lightningColor(age)
+        });
+        fresh.push(s);
+      }
+    });
+    lightningStrikes = fresh;
+  }
+
+  function connectLightning() {
+    var server = BO_SERVERS[Math.floor(Math.random() * BO_SERVERS.length)];
+    var url = "wss://" + server + ".blitzortung.org:443/";
+
+    try {
+      lightningWs = new WebSocket(url);
+    } catch (err) {
+      console.error("[foudre] echec connexion :", err);
+      return;
+    }
+
+    lightningWs.onopen = function () {
+      console.log("[foudre] connecte a " + server);
+      // S'abonner a l'Europe elargie (meme bbox que FIRMS)
+      lightningWs.send(JSON.stringify({ west: -25, east: 55, north: 72, south: 25 }));
+    };
+
+    lightningWs.onmessage = function (event) {
+      try {
+        var data = JSON.parse(event.data);
+        if (data.lat !== undefined && data.lon !== undefined) {
+          var t = data.time ? data.time / 1000000 : Date.now(); // nanoseconds -> ms
+          addLightningStrike(data.lat, data.lon, t);
+        }
+      } catch (e) {
+        // Certains messages sont des infos serveur, pas des eclairs
+      }
+    };
+
+    lightningWs.onerror = function () {
+      console.error("[foudre] erreur WebSocket");
+    };
+
+    lightningWs.onclose = function () {
+      console.log("[foudre] deconnecte");
+      // Reconnexion auto si toujours actif
+      if (lightningVisible) {
+        setTimeout(connectLightning, 3000);
+      }
+    };
+
+    // Nettoyage periodique des vieux eclairs
+    lightningCleanupTimer = setInterval(cleanupLightning, LIGHTNING_CLEANUP_MS);
+  }
+
+  function disconnectLightning() {
+    if (lightningWs) {
+      lightningWs.onclose = null; // empecher la reconnexion auto
+      lightningWs.close();
+      lightningWs = null;
+    }
+    if (lightningCleanupTimer) {
+      clearInterval(lightningCleanupTimer);
+      lightningCleanupTimer = null;
+    }
+    // Retirer tous les eclairs de la carte
+    lightningStrikes.forEach(function (s) { map.removeLayer(s.marker); });
+    lightningStrikes = [];
+  }
+
+  els.lightningToggle.addEventListener("click", function () {
+    lightningVisible = !lightningVisible;
+    els.lightningToggle.classList.toggle("active", lightningVisible);
+    if (lightningVisible) {
+      connectLightning();
+    } else {
+      disconnectLightning();
+    }
   });
 
   // -------------------------------------------------------------------
