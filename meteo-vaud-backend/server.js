@@ -31,7 +31,7 @@ const { fetchEpicFrames } = require("./sources/epic");
 const { fetchFirmsData } = require("./sources/firms");
 const { fetchApod, fetchNeo } = require("./sources/nasa");
 const { fetchJwstImages } = require("./sources/jwst");
-const { fetchWindGrid } = require("./sources/wind");
+const { fetchEuropeWindGrid, fetchWorldWindGrid } = require("./sources/wind");
 
 const app = express();
 app.use(cors());
@@ -84,6 +84,7 @@ let apodCache = { updatedAt: null, apod: null, lastError: null };
 let neoCache = { updatedAt: null, asteroids: [], lastError: null };
 let jwstCache = { updatedAt: null, images: [], lastError: null };
 let windCache = { updatedAt: null, grid: null, lastError: null };
+let windWorldCache = { updatedAt: null, grid: null, lastError: null };
 
 function pickScope(req) {
   const scope = (req.query.scope || "vd").toLowerCase();
@@ -240,16 +241,31 @@ async function refreshJwst() {
 
 async function refreshWind() {
   try {
-    const grid = await fetchWindGrid();
+    const grid = await fetchEuropeWindGrid();
     windCache = {
       updatedAt: new Date().toISOString(),
       grid,
       lastError: null
     };
-    console.log(`[refresh:wind] grille de vent mise a jour (${windCache.updatedAt})`);
+    console.log(`[refresh:wind] grille Europe mise a jour (${windCache.updatedAt})`);
   } catch (err) {
     windCache.lastError = err.message;
     console.error("[refresh:wind] echec :", err.message);
+  }
+}
+
+async function refreshWindWorld() {
+  try {
+    const grid = await fetchWorldWindGrid();
+    windWorldCache = {
+      updatedAt: new Date().toISOString(),
+      grid,
+      lastError: null
+    };
+    console.log(`[refresh:wind-world] grille mondiale mise a jour (${windWorldCache.updatedAt})`);
+  } catch (err) {
+    windWorldCache.lastError = err.message;
+    console.error("[refresh:wind-world] echec :", err.message);
   }
 }
 
@@ -432,10 +448,21 @@ app.get("/jwst", (req, res) => {
 // Source : Open-Meteo (gratuit, sans cle). Rafraichi toutes les 3h.
 app.get("/wind", (req, res) => {
   res.json({
-    source: "Open-Meteo (grille construite cote serveur)",
+    source: "Open-Meteo (grille Europe, 1 degre, construite cote serveur)",
     updatedAt: windCache.updatedAt,
     lastError: windCache.lastError,
     grid: windCache.grid
+  });
+});
+
+// GET /wind-world - grille de vent mondiale (moins precise, pour vue dezoomee)
+// Rafraichi toutes les 3h.
+app.get("/wind-world", (req, res) => {
+  res.json({
+    source: "Open-Meteo (grille mondiale, 4 degres, construite cote serveur)",
+    updatedAt: windWorldCache.updatedAt,
+    lastError: windWorldCache.lastError,
+    grid: windWorldCache.grid
   });
 });
 
@@ -505,12 +532,14 @@ var httpServer = app.listen(PORT, async () => {
   await refreshNeo();
   await refreshJwst();
   await refreshWind();
+  await refreshWindWorld();
   setInterval(refreshAll, DATA_REFRESH_MS);
   setInterval(refreshFirms, 2 * 60 * 60 * 1000); // 2h : le satellite passe ~2 fois/jour, pas besoin de plus
   setInterval(refreshApod, 6 * 60 * 60 * 1000); // 6h : la photo change 1x/jour
   setInterval(refreshNeo, 6 * 60 * 60 * 1000); // 6h : les donnees NEO bougent lentement
   setInterval(refreshJwst, 12 * 60 * 60 * 1000); // 12h : les publications NASA ne changent pas souvent
   setInterval(refreshWind, 3 * 60 * 60 * 1000); // 3h : le vent change lentement
+  setInterval(refreshWindWorld, 3 * 60 * 60 * 1000); // 3h
   setInterval(refreshHeatwave, 3 * 60 * 60 * 1000); // 3h : la prevision OWM ne change pas assez vite pour justifier plus frequent
   setInterval(refreshEpic, 60 * 60 * 1000); // 1h : cadence proche de celle des vraies prises de vue EPIC
   setInterval(refreshAllCapitalRegions, CAPITALS_REFRESH_MS);
