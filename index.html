@@ -979,6 +979,7 @@
       <button class="rain-toggle" id="fireToggle">🔥 INCENDIES</button>
       <button class="rain-toggle" id="satelliteToggle">🛰 SATELLITE</button>
       <button class="rain-toggle" id="aerosolToggle">💨 AÉROSOLS</button>
+      <button class="rain-toggle" id="earthquakeToggle">🫨 SÉISMES</button>
       <button class="rain-toggle" id="camsToggle">🌫️ PM2.5</button>
       <button class="rain-toggle" id="windToggle">💨 VENT</button>
       <button class="rain-toggle" id="windEuropeToggle">🌀 VENT ANIMÉ EUROPE</button>
@@ -1320,6 +1321,7 @@
     fireToggle: document.getElementById("fireToggle"),
     satelliteToggle: document.getElementById("satelliteToggle"),
     aerosolToggle: document.getElementById("aerosolToggle"),
+    earthquakeToggle: document.getElementById("earthquakeToggle"),
     snowToggle: document.getElementById("snowToggle"),
     eonetToggle: document.getElementById("eonetToggle"),
     effisToggle: document.getElementById("effisToggle"),
@@ -2365,6 +2367,104 @@
       showCamsLayer();
     } else {
       hideCamsLayer();
+    }
+  });
+
+  // -------------------------------------------------------------------
+  // Seismes (USGS mondial + SED Suisse via backend /earthquakes)
+  // -------------------------------------------------------------------
+  // Marqueurs colores/dimensionnes selon la magnitude, meme pattern que
+  // les incendies FIRMS (canvas renderer pour la performance et la
+  // tolerance de clic).
+
+  var earthquakeMarkers = [];
+  var earthquakeVisible = false;
+  var earthquakeData = null;
+  var earthquakeRenderer = L.canvas({ padding: 0.5, tolerance: 10 });
+
+  function magColor(mag) {
+    if (mag >= 6) return "#d53e4f";   // rouge — majeur
+    if (mag >= 5) return "#f46d43";   // orange fonce — fort
+    if (mag >= 4) return "#fdae61";   // orange — modere
+    if (mag >= 3) return "#fee08b";   // jaune — leger
+    return "#abdda4";                  // vert clair — mineur
+  }
+
+  function magRadius(mag) {
+    if (mag >= 6) return 14;
+    if (mag >= 5) return 11;
+    if (mag >= 4) return 8;
+    if (mag >= 3) return 6;
+    return 4;
+  }
+
+  function magLabel(mag) {
+    if (mag >= 7) return "Majeur";
+    if (mag >= 6) return "Fort";
+    if (mag >= 5) return "Modéré à fort";
+    if (mag >= 4) return "Modéré";
+    if (mag >= 3) return "Léger";
+    return "Mineur";
+  }
+
+  function earthquakePopupHtml(q) {
+    var dateStr = q.time ? new Date(q.time).toLocaleString("fr-CH", { dateStyle: "medium", timeStyle: "short" }) : "heure inconnue";
+    var depthStr = q.depth_km !== null && q.depth_km !== undefined ? Math.round(q.depth_km) + " km" : "profondeur inconnue";
+    var tsunamiWarning = q.tsunami ? "<br>⚠️ <b>Alerte tsunami possible</b>" : "";
+    var sourceTag = q.source === "SED" ? "🇨🇭 SED (Suisse)" : "🌍 USGS";
+    return "<b>🫨 Magnitude " + q.mag.toFixed(1) + "</b> (" + magLabel(q.mag) + ")<br>" +
+      q.place + "<br>" +
+      "Profondeur : " + depthStr + "<br>" +
+      dateStr + tsunamiWarning + "<br>" +
+      "<small>" + sourceTag + "</small>" +
+      (q.url ? "<br><a href='" + q.url + "' target='_blank' rel='noopener'>Plus de détails →</a>" : "");
+  }
+
+  function renderEarthquakeMarkers() {
+    clearEarthquakeMarkers();
+    if (!earthquakeData || !earthquakeData.earthquakes) return;
+    earthquakeData.earthquakes.forEach(function (q) {
+      var m = L.circleMarker([q.lat, q.lon], {
+        radius: magRadius(q.mag),
+        fillColor: magColor(q.mag),
+        fillOpacity: 0.8,
+        color: "#10141A",
+        weight: 1,
+        renderer: earthquakeRenderer,
+        pane: "markerPane"
+      }).addTo(map);
+      m.bindPopup(earthquakePopupHtml(q));
+      earthquakeMarkers.push(m);
+    });
+  }
+
+  function clearEarthquakeMarkers() {
+    earthquakeMarkers.forEach(function (m) { map.removeLayer(m); });
+    earthquakeMarkers = [];
+  }
+
+  function fetchEarthquakesAndRender() {
+    fetch(API_BASE + "/earthquakes", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        earthquakeData = data;
+        if (earthquakeVisible) renderEarthquakeMarkers();
+      })
+      .catch(function (err) {
+        console.error("[seismes] echec :", err);
+      });
+  }
+
+  fetchEarthquakesAndRender();
+  setInterval(fetchEarthquakesAndRender, 15 * 60 * 1000); // 15 min, aligne sur le refresh backend
+
+  els.earthquakeToggle.addEventListener("click", function () {
+    earthquakeVisible = !earthquakeVisible;
+    els.earthquakeToggle.classList.toggle("active", earthquakeVisible);
+    if (earthquakeVisible) {
+      if (earthquakeData) renderEarthquakeMarkers();
+    } else {
+      clearEarthquakeMarkers();
     }
   });
 
