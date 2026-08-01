@@ -84,9 +84,9 @@ async function fetchOni() {
 }
 
 // Tente de lire le fichier mensuel NON lisse (plus reactif que l'ONI).
-// Le format exact n'a pas pu etre verifie a l'avance : on log les dernieres
-// lignes brutes pour pouvoir l'ajuster si besoin, et on rejette la valeur
-// si elle ne passe pas le controle de coherence (isPlausible).
+// Format confirme le 01.08 via les logs de production (10 colonnes) :
+//   YR  MON  Nino1+2_SST  Nino1+2_ANOM  Nino3_SST  Nino3_ANOM  Nino3.4_SST  Nino3.4_ANOM  Nino4_SST  Nino4_ANOM
+// On veut Nino3.4 (indice standard El Nino/La Nina), colonnes 6 et 7.
 async function fetchMonthlyNino34() {
   var url = "https://www.cpc.ncep.noaa.gov/data/indices/ersst5.nino.mth.91-20.ascii";
   var raw = await httpGet(url);
@@ -94,29 +94,28 @@ async function fetchMonthlyNino34() {
 
   if (lines.length < 2) throw new Error("Fichier mensuel Nino3.4 vide");
 
-  console.log("[enso] apercu fichier mensuel (3 dernieres lignes brutes) :");
-  lines.slice(-3).forEach(function (l) { console.log("[enso]   " + l); });
+  // Derniere ligne de donnees (en ignorant un eventuel en-tete non numerique)
+  var dataLines = lines.filter(function (l) { return /^\s*\d{4}\s+\d{1,2}\s/.test(l); });
+  if (dataLines.length === 0) throw new Error("Aucune ligne de donnees numeriques trouvee dans le fichier mensuel");
 
-  var header = lines[0].trim().split(/\s+/);
-  var lastLine = lines[lines.length - 1].trim().split(/\s+/);
+  var lastLine = dataLines[dataLines.length - 1].trim().split(/\s+/);
+  if (lastLine.length < 8) throw new Error("Ligne mensuelle incomplete : \"" + dataLines[dataLines.length - 1] + "\"");
 
-  // On cherche la colonne "ANOM" via l'en-tete si possible, sinon on suppose
-  // qu'elle est en derniere position (schema le plus courant sur ces fichiers CPC).
-  var anomIdx = header.findIndex(function (h) { return /anom/i.test(h); });
-  if (anomIdx === -1) anomIdx = lastLine.length - 1;
-
-  var yearIdx = header.findIndex(function (h) { return /^yr$|year/i.test(h); });
-  if (yearIdx === -1) yearIdx = 1; // souvent en 2e position sur ces fichiers
-
-  var anomaly = parseFloat(lastLine[anomIdx]);
-  var year = parseInt(lastLine[yearIdx]);
-  var monthOrSeason = lastLine[0];
+  var year = parseInt(lastLine[0]);
+  var month = parseInt(lastLine[1]);
+  var nino34Sst = parseFloat(lastLine[6]);
+  var anomaly = parseFloat(lastLine[7]); // Nino3.4 ANOM = colonne 7 (indice 0-based)
 
   if (!isPlausible(anomaly, year)) {
-    throw new Error("Mensuel Nino3.4 : valeurs implausibles (ligne=\"" + lines[lines.length - 1] + "\" anomIdx=" + anomIdx + " yearIdx=" + yearIdx + " -> anomaly=" + anomaly + " year=" + year + ")");
+    throw new Error("Mensuel Nino3.4 : valeurs implausibles (ligne=\"" + dataLines[dataLines.length - 1] + "\" -> anomaly=" + anomaly + " year=" + year + ")");
   }
 
-  return { period: monthOrSeason + " " + year, sstAnomaly: anomaly, unsmoothed: true };
+  var MONTH_NAMES = ["", "Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"];
+  var period = (MONTH_NAMES[month] || month) + " " + year;
+
+  console.log("[enso] mensuel Nino3.4 retenu : " + period + " — SST " + nino34Sst + "°C, anomalie " + anomaly + "°C");
+
+  return { period: period, sstAnomaly: anomaly, unsmoothed: true };
 }
 
 async function fetchEnso() {
