@@ -2407,12 +2407,13 @@
     return "Mineur";
   }
 
-  function earthquakePopupHtml(q) {
+  function earthquakePopupHtml(q, isRecent) {
     var dateStr = q.time ? new Date(q.time).toLocaleString("fr-CH", { dateStyle: "medium", timeStyle: "short" }) : "heure inconnue";
     var depthStr = q.depth_km !== null && q.depth_km !== undefined ? Math.round(q.depth_km) + " km" : "profondeur inconnue";
     var tsunamiWarning = q.tsunami ? "<br>⚠️ <b>Alerte tsunami possible</b>" : "";
     var sourceTag = q.source === "SED" ? "🇨🇭 SED (Suisse)" : "🌍 USGS";
-    return "<b>🫨 Magnitude " + q.mag.toFixed(1) + "</b> (" + magLabel(q.mag) + ")<br>" +
+    var recentBadge = isRecent ? " <span style='color:#fff; background:#444; padding:1px 5px; border-radius:8px; font-size:10px;'>⚪ &lt; 24h</span>" : "";
+    return "<b>🫨 Magnitude " + q.mag.toFixed(1) + "</b> (" + magLabel(q.mag) + ")" + recentBadge + "<br>" +
       q.place + "<br>" +
       "Profondeur : " + depthStr + "<br>" +
       dateStr + tsunamiWarning + "<br>" +
@@ -2423,17 +2424,20 @@
   function renderEarthquakeMarkers() {
     clearEarthquakeMarkers();
     if (!earthquakeData || !earthquakeData.earthquakes) return;
+    var now = Date.now();
+    var DAY_MS = 24 * 60 * 60 * 1000;
     earthquakeData.earthquakes.forEach(function (q) {
+      var isRecent = q.time && (now - q.time) < DAY_MS;
       var m = L.circleMarker([q.lat, q.lon], {
-        radius: magRadius(q.mag),
+        radius: magRadius(q.mag) + (isRecent ? 2 : 0), // legerement plus grand pour laisser voir la couronne
         fillColor: magColor(q.mag),
-        fillOpacity: 0.8,
-        color: "#10141A",
-        weight: 1,
+        fillOpacity: 0.85,
+        color: isRecent ? "#ffffff" : "#10141A",
+        weight: isRecent ? 2.5 : 1,
         renderer: earthquakeRenderer,
         pane: "markerPane"
       }).addTo(map);
-      m.bindPopup(earthquakePopupHtml(q));
+      m.bindPopup(earthquakePopupHtml(q, isRecent));
       earthquakeMarkers.push(m);
     });
   }
