@@ -34,6 +34,7 @@ const { fetchJwstImages } = require("./sources/jwst");
 const { fetchEuropeWindGrid } = require("./sources/wind");
 const { fetchAllEarthquakes } = require("./sources/earthquakes");
 const { fetchEnso } = require("./sources/enso");
+const { fetchSpaceWeather } = require("./sources/spaceweather");
 
 const app = express();
 app.use(cors());
@@ -88,6 +89,7 @@ let jwstCache = { updatedAt: null, images: [], lastError: null };
 let windCache = { updatedAt: null, grid: null, lastError: null };
 let earthquakeCache = { updatedAt: null, earthquakes: [], lastError: null };
 let ensoCache = { updatedAt: null, enso: null, lastError: null };
+let spaceWeatherCache = { updatedAt: null, spaceWeather: null, lastError: null };
 
 function pickScope(req) {
   const scope = (req.query.scope || "vd").toLowerCase();
@@ -284,6 +286,21 @@ async function refreshEnso() {
   } catch (err) {
     ensoCache.lastError = err.message;
     console.error("[refresh:enso] echec :", err.message);
+  }
+}
+
+async function refreshSpaceWeather() {
+  try {
+    const spaceWeather = await fetchSpaceWeather();
+    spaceWeatherCache = {
+      updatedAt: new Date().toISOString(),
+      spaceWeather,
+      lastError: null
+    };
+    console.log(`[refresh:spaceweather] Kp=${spaceWeather.kp} (${spaceWeather.gScale}) — ${spaceWeatherCache.updatedAt}`);
+  } catch (err) {
+    spaceWeatherCache.lastError = err.message;
+    console.error("[refresh:spaceweather] echec :", err.message);
   }
 }
 
@@ -509,6 +526,17 @@ app.get("/enso", (req, res) => {
   });
 });
 
+// GET /spaceweather - indice Kp (activite geomagnetique) et alerte aurores boreales
+// Source : NOAA SWPC. Rafraichi toutes les 3h (cadence native de la donnee).
+app.get("/spaceweather", (req, res) => {
+  res.json({
+    source: "NOAA Space Weather Prediction Center (SWPC)",
+    updatedAt: spaceWeatherCache.updatedAt,
+    lastError: spaceWeatherCache.lastError,
+    spaceWeather: spaceWeatherCache.spaceWeather
+  });
+});
+
 // GET /epic - photos NASA EPIC/DSCOVR de la Terre entiere (proxy backend car l'API NASA ne supporte pas CORS)
 app.get("/epic", (req, res) => {
   res.json({
@@ -576,6 +604,7 @@ var httpServer = app.listen(PORT, async () => {
   await refreshJwst();
   await refreshEarthquakes();
   await refreshEnso();
+  await refreshSpaceWeather();
   // Vent Europe : PAS de refresh automatique au demarrage. Marcel controle
   // lui-meme quand la grille se (re)construit, via GET /wind-europe/refresh.
   setInterval(refreshAll, DATA_REFRESH_MS);
@@ -585,6 +614,7 @@ var httpServer = app.listen(PORT, async () => {
   setInterval(refreshJwst, 12 * 60 * 60 * 1000); // 12h : les publications NASA ne changent pas souvent
   setInterval(refreshEarthquakes, 15 * 60 * 1000); // 15 min : les seismes sont un evenement rapide
   setInterval(refreshEnso, 24 * 60 * 60 * 1000); // 24h : le NOAA ne publie qu'1x/mois
+  setInterval(refreshSpaceWeather, 3 * 60 * 60 * 1000); // 3h : cadence native du Kp
   // Pas de setInterval automatique pour le vent Europe : uniquement sur demande (voir /wind-europe/refresh)
   setInterval(refreshHeatwave, 3 * 60 * 60 * 1000); // 3h : la prevision OWM ne change pas assez vite pour justifier plus frequent
   setInterval(refreshEpic, 60 * 60 * 1000); // 1h : cadence proche de celle des vraies prises de vue EPIC
