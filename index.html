@@ -3453,18 +3453,25 @@
       });
 
     // Éclipses — données prévisibles, pas besoin d'API
+    // Types corriges (2028-2029) et horaires locaux Lausanne (CET/CEST) ajoutes le 01.08
     var eclipses = [
-      { date: "2026-08-12", type: "☀️ Solaire totale", desc: "Totalité : Islande, nord de l'Espagne (Bilbao, Valence, Saragosse)", visible: "🇨🇭 Partielle 90-95% depuis Lausanne", highlight: true },
-      { date: "2026-08-28", type: "🌕 Lunaire partielle", desc: "Visible depuis l'Europe, l'Afrique et les Amériques", visible: "🇨🇭 Visible depuis Lausanne", highlight: false },
-      { date: "2027-02-06", type: "☀️ Solaire annulaire", desc: "Annularité en Amérique du Sud et Afrique", visible: "🇨🇭 Non visible", highlight: false },
-      { date: "2027-02-20", type: "🌕 Lunaire pénombrale", desc: "Pénombrale, visible depuis l'Europe", visible: "🇨🇭 Visible depuis Lausanne", highlight: false },
-      { date: "2027-08-02", type: "☀️ Solaire totale", desc: "Éclipse du siècle (6m23s), totalité en Afrique du Nord et Espagne sud", visible: "🇨🇭 Partielle visible", highlight: true },
-      { date: "2028-01-12", type: "🌕 Lunaire partielle", desc: "Visible depuis l'Europe", visible: "🇨🇭 Visible depuis Lausanne", highlight: false },
-      { date: "2028-01-26", type: "☀️ Solaire annulaire", desc: "Annularité au sud de l'Espagne et du Portugal", visible: "🇨🇭 Partielle visible", highlight: false },
-      { date: "2028-07-22", type: "☀️ Solaire totale", desc: "Totalité en Australie et Nouvelle-Zélande", visible: "🇨🇭 Non visible", highlight: false },
-      { date: "2028-12-31", type: "🌕 Lunaire totale", desc: "Éclipse totale de Lune la nuit de la Saint-Sylvestre !", visible: "🇨🇭 Visible depuis Lausanne", highlight: true },
-      { date: "2029-06-12", type: "☀️ Solaire partielle", desc: "Visible depuis la Scandinavie et l'Arctique", visible: "🇨🇭 Partielle faible", highlight: false },
-      { date: "2029-06-26", type: "🌕 Lunaire totale", desc: "L'une des plus longues éclipses totales de la décennie", visible: "🇨🇭 Visible depuis Lausanne", highlight: true }
+      { date: "2026-08-12", type: "☀️ Solaire totale", desc: "Totalité : Islande, nord de l'Espagne (Bilbao, Burgos). Lausanne : début 19h26, maximum 20h19 (92,2%), fin ~20h50 (coucher du soleil)", visible: "🇨🇭 Partielle 92% — 19h26 → 20h19 → ~20h50", highlight: true },
+      { date: "2026-08-28", type: "🌕 Lunaire partielle", desc: "93% de la Lune couverte. Lausanne : début ~03h20, maximum ~06h10, Lune basse sur l'horizon ouest", visible: "🇨🇭 Visible — 03h20 → 06h10", highlight: false },
+      { date: "2027-02-06", type: "☀️ Solaire annulaire", desc: "Annularité en Amérique du Sud et Afrique. Nuit en Suisse au moment de l'éclipse", visible: "🇨🇭 Non visible (0%)", highlight: false },
+      { date: "2027-02-20", type: "🌕 Lunaire pénombrale", desc: "Pénombrale (subtile). Lausanne : début ~22h12, maximum ~00h12 (21 fév.), fin ~02h13", visible: "🇨🇭 Visible — 22h12 → 00h12 → 02h13", highlight: false },
+      { date: "2027-07-18", type: "🌕 Lunaire pénombrale", desc: "Se produit en plein jour en Suisse (Lune sous l'horizon)", visible: "🇨🇭 Non visible (0%)", highlight: false },
+      { date: "2027-08-02", type: "☀️ Solaire totale", desc: "Éclipse du siècle (6m23s), totalité au Sud de l'Espagne/Égypte. Lausanne/Genève : ~60% de couverture vers midi", visible: "🇨🇭 Partielle ~60% — ~11h05 → 12h08 → ~13h10", highlight: true },
+      { date: "2028-01-12", type: "☀️ Solaire annulaire", desc: "Annularité au Brésil/Guyane. Nuit en Suisse au moment de l'éclipse", visible: "🇨🇭 Non visible (0%)", highlight: false },
+      { date: "2028-01-26", type: "🌕 Lunaire totale", desc: "Totalité ! Lausanne : maximum vers 16h09 (à vérifier selon lever de Lune), longue éclipse (10min de totalité)", visible: "🇨🇭 Visible en soirée", highlight: true },
+      { date: "2028-07-06", type: "☀️ Solaire partielle", desc: "Visible depuis la majorité de l'Europe. Détails Lausanne à confirmer", visible: "🇨🇭 Partielle probable", highlight: false },
+      { date: "2028-07-22", type: "🌕 Lunaire totale", desc: "Totalité en Australie/Nouvelle-Zélande (Sydney). Nuit en Suisse : à vérifier si Lune levée", visible: "🇨🇭 Visibilité à vérifier", highlight: false },
+      { date: "2028-12-31", type: "🌕 Lunaire pénombrale", desc: "Pénombrale (subtile), nuit de la Saint-Sylvestre ! Lausanne : maximum ~17h52", visible: "🇨🇭 Visible — soirée du réveillon", highlight: true },
+      { date: "2029-01-14", type: "☀️ Solaire partielle", desc: "Visible Amérique du Nord/Centrale. Nuit en Suisse", visible: "🇨🇭 Non visible (0%)", highlight: false },
+      { date: "2029-06-12", type: "☀️ Solaire partielle", desc: "Visible Europe du Nord/Centrale (magnitude faible ~0.46). Lausanne : tôt le matin, faible %", visible: "🇨🇭 Partielle faible — ~06h00", highlight: false },
+      { date: "2029-06-26", type: "🌕 Lunaire totale", desc: "L'une des plus longues éclipses du siècle (1h42 de totalité !). Lausanne : maximum ~05h22, Lune très basse à l'aube", visible: "🇨🇭 Visible à l'aube (incertain)", highlight: true },
+      { date: "2029-07-11", type: "☀️ Solaire partielle", desc: "Visible depuis l'Antarctique/Pacifique Sud uniquement", visible: "🇨🇭 Non visible (0%)", highlight: false },
+      { date: "2029-12-05", type: "☀️ Solaire partielle", desc: "Visible depuis l'Antarctique/Australie uniquement", visible: "🇨🇭 Non visible (0%)", highlight: false },
+      { date: "2029-12-20", type: "🌕 Lunaire totale", desc: "Totalité ! Lausanne : début ~20h44, maximum ~23h43, fin ~01h42 (21 déc.)", visible: "🇨🇭 Visible — 20h44 → 23h43 → 01h42", highlight: true }
     ];
 
     // Filtrer : ne garder que les éclipses futures
