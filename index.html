@@ -1041,6 +1041,7 @@
   <footer>
     <span>Source: MeteoSwiss (SwissMetNet, OGD) · CC-BY · Pluie: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> · Temp. Europe: <a href="https://openweathermap.org/" target="_blank" rel="noopener">OpenWeatherMap</a> · Incendies/Satellite/Aérosols/Neige/Événements: <a href="https://www.nasa.gov/" target="_blank" rel="noopener">NASA (FIRMS, GIBS, EONET)</a> · Feux UE: <a href="https://effis.jrc.ec.europa.eu/" target="_blank" rel="noopener">EFFIS/Copernicus</a></span>
     <span class="footer-refresh">
+      <span id="footerMoonSun" style="margin-right: 10px;">—</span>
       <span id="updatedAt">—</span>
       <button id="manualRefresh" title="Rafraichir maintenant">⟳</button>
     </span>
@@ -3505,6 +3506,16 @@
     document.getElementById("moonSunPanel").innerHTML = html;
   }
 
+  // Version compacte pour le footer, toujours visible sans avoir a ouvrir le panneau Espace
+  function renderFooterMoonSun() {
+    var now = new Date();
+    var moon = computeMoonPhase(now);
+    var sun = computeSunTimes(now, LAUSANNE_LAT, LAUSANNE_LON);
+    var el = document.getElementById("footerMoonSun");
+    if (el) {
+      el.textContent = moon.icon + " " + moon.percent + "% · ☀️ " + sun.sunrise + " → 🌇 " + sun.sunset;
+    }
+
   function loadAstro() {
     astroLoaded = true;
     renderMoonSunPanel(); // calcule localement, aucun appel reseau necessaire
@@ -3901,6 +3912,8 @@
   setInterval(load, REFRESH_MS);
   loadHeatwave();
   setInterval(loadHeatwave, 60 * 60 * 1000); // 1h : le backend lui-meme ne se rafraichit que toutes les 3h
+  renderFooterMoonSun();
+  setInterval(renderFooterMoonSun, 60 * 60 * 1000); // 1h : lever/coucher du soleil evolue lentement
 
 })();
 </script>
