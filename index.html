@@ -1239,6 +1239,12 @@
       <div id="moonSunPanel" style="font-size: 12px;"></div>
     </div>
 
+    <!-- Météo spatiale -->
+    <div style="padding: 22px; border-top: 1px solid var(--hairline);">
+      <h3 style="margin: 0 0 10px 0; color: var(--amber); font-size: 14px;">🌌 Météo spatiale</h3>
+      <div id="spaceWeatherPanel" style="font-size: 12px;">Chargement...</div>
+    </div>
+
     <!-- Éclipses -->
     <div style="padding: 22px; border-top: 1px solid var(--hairline);">
       <h3 style="margin: 0 0 10px 0; color: var(--amber); font-size: 14px;">🌑 Prochaines éclipses</h3>
@@ -3652,9 +3658,44 @@
       });
   }
 
+  // Météo spatiale — indice Kp, niveau de tempête geomagnetique, alerte aurores
+  function fetchAndRenderSpaceWeather() {
+    fetch(API_BASE + "/spaceweather", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var el = document.getElementById("spaceWeatherPanel");
+        if (!el) return;
+        if (!data.spaceWeather) {
+          el.innerHTML = "<em>Données pas encore disponibles.</em>";
+          return;
+        }
+        var sw = data.spaceWeather;
+        var gColor = sw.kp >= 7 ? "#d53e4f" : (sw.kp >= 5 ? "#fdae61" : "#66c2a5");
+        var timeStr = sw.timeTag ? new Date(sw.timeTag).toLocaleString("fr-CH", { dateStyle: "medium", timeStyle: "short" }) : "—";
+
+        var html = "";
+        html += '<div style="display:flex; align-items:center; gap:14px; margin-bottom:10px;">';
+        html += '<div style="font-size:28px; font-weight:bold; color:' + gColor + ';">Kp ' + sw.kp.toFixed(1) + '</div>';
+        html += '<div><div style="font-weight:bold;">' + sw.gScale + ' — ' + sw.gScaleLabel + '</div>';
+        html += '<div style="color:var(--text-faint); font-size:10px;">Mesuré : ' + timeStr + '</div></div>';
+        html += '</div>';
+        html += '<div style="padding-top:8px; border-top:1px solid var(--hairline);">';
+        html += '🌌 <b>Aurores depuis la Suisse :</b><br>' + sw.auroraSwitzerland;
+        html += '</div>';
+
+        el.innerHTML = html;
+      })
+      .catch(function (err) {
+        console.error("[meteo spatiale] echec :", err);
+        var el = document.getElementById("spaceWeatherPanel");
+        if (el) el.innerHTML = "<em>Erreur de chargement.</em>";
+      });
+  }
+
   function loadAstro() {
     astroLoaded = true;
     renderMoonSunPanel(); // calcule localement, aucun appel reseau necessaire
+    fetchAndRenderSpaceWeather();
 
     // APOD
     fetch(API_BASE + "/apod", { cache: "no-store" })
