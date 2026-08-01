@@ -32,6 +32,7 @@ const { fetchFirmsData } = require("./sources/firms");
 const { fetchApod, fetchNeo } = require("./sources/nasa");
 const { fetchJwstImages } = require("./sources/jwst");
 const { fetchEuropeWindGrid } = require("./sources/wind");
+const { fetchAllEarthquakes } = require("./sources/earthquakes");
 
 const app = express();
 app.use(cors());
@@ -84,6 +85,7 @@ let apodCache = { updatedAt: null, apod: null, lastError: null };
 let neoCache = { updatedAt: null, asteroids: [], lastError: null };
 let jwstCache = { updatedAt: null, images: [], lastError: null };
 let windCache = { updatedAt: null, grid: null, lastError: null };
+let earthquakeCache = { updatedAt: null, earthquakes: [], lastError: null };
 
 function pickScope(req) {
   const scope = (req.query.scope || "vd").toLowerCase();
@@ -250,6 +252,21 @@ async function refreshWindEurope() {
   } catch (err) {
     windCache.lastError = err.message;
     console.error("[refresh:wind:europe] echec :", err.message);
+  }
+}
+
+async function refreshEarthquakes() {
+  try {
+    const earthquakes = await fetchAllEarthquakes();
+    earthquakeCache = {
+      updatedAt: new Date().toISOString(),
+      earthquakes,
+      lastError: null
+    };
+    console.log(`[refresh:earthquakes] ${earthquakes.length} seismes recuperes (${earthquakeCache.updatedAt})`);
+  } catch (err) {
+    earthquakeCache.lastError = err.message;
+    console.error("[refresh:earthquakes] echec :", err.message);
   }
 }
 
@@ -452,6 +469,19 @@ app.get("/wind-europe/refresh", (req, res) => {
   res.json({ status: "demarre", message: "Construction de la grille Europe lancee (~7-8 minutes). Consultez /wind-europe pour verifier l'avancement (updatedAt)." });
 });
 
+// GET /earthquakes - seismes recents (USGS mondial + SED Suisse combines)
+// Rafraichi toutes les 15 minutes.
+app.get("/earthquakes", (req, res) => {
+  res.json({
+    source: "USGS (mondial, 7 derniers jours) + SED/ETH Zurich (Suisse, 30 derniers jours)",
+    licence: "Domaine public (USGS) / SED ETH Zurich",
+    updatedAt: earthquakeCache.updatedAt,
+    lastError: earthquakeCache.lastError,
+    count: earthquakeCache.earthquakes.length,
+    earthquakes: earthquakeCache.earthquakes
+  });
+});
+
 // GET /epic - photos NASA EPIC/DSCOVR de la Terre entiere (proxy backend car l'API NASA ne supporte pas CORS)
 app.get("/epic", (req, res) => {
   res.json({
@@ -517,6 +547,7 @@ var httpServer = app.listen(PORT, async () => {
   await refreshApod();
   await refreshNeo();
   await refreshJwst();
+  await refreshEarthquakes();
   // Vent Europe : PAS de refresh automatique au demarrage. Marcel controle
   // lui-meme quand la grille se (re)construit, via GET /wind-europe/refresh.
   setInterval(refreshAll, DATA_REFRESH_MS);
@@ -524,6 +555,7 @@ var httpServer = app.listen(PORT, async () => {
   setInterval(refreshApod, 6 * 60 * 60 * 1000); // 6h : la photo change 1x/jour
   setInterval(refreshNeo, 6 * 60 * 60 * 1000); // 6h : les donnees NEO bougent lentement
   setInterval(refreshJwst, 12 * 60 * 60 * 1000); // 12h : les publications NASA ne changent pas souvent
+  setInterval(refreshEarthquakes, 15 * 60 * 1000); // 15 min : les seismes sont un evenement rapide
   // Pas de setInterval automatique pour le vent Europe : uniquement sur demande (voir /wind-europe/refresh)
   setInterval(refreshHeatwave, 3 * 60 * 60 * 1000); // 3h : la prevision OWM ne change pas assez vite pour justifier plus frequent
   setInterval(refreshEpic, 60 * 60 * 1000); // 1h : cadence proche de celle des vraies prises de vue EPIC
