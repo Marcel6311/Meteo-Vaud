@@ -33,6 +33,7 @@ const { fetchApod, fetchNeo } = require("./sources/nasa");
 const { fetchJwstImages } = require("./sources/jwst");
 const { fetchEuropeWindGrid } = require("./sources/wind");
 const { fetchAllEarthquakes } = require("./sources/earthquakes");
+const { fetchEnso } = require("./sources/enso");
 
 const app = express();
 app.use(cors());
@@ -86,6 +87,7 @@ let neoCache = { updatedAt: null, asteroids: [], lastError: null };
 let jwstCache = { updatedAt: null, images: [], lastError: null };
 let windCache = { updatedAt: null, grid: null, lastError: null };
 let earthquakeCache = { updatedAt: null, earthquakes: [], lastError: null };
+let ensoCache = { updatedAt: null, enso: null, lastError: null };
 
 function pickScope(req) {
   const scope = (req.query.scope || "vd").toLowerCase();
@@ -267,6 +269,21 @@ async function refreshEarthquakes() {
   } catch (err) {
     earthquakeCache.lastError = err.message;
     console.error("[refresh:earthquakes] echec :", err.message);
+  }
+}
+
+async function refreshEnso() {
+  try {
+    const enso = await fetchEnso();
+    ensoCache = {
+      updatedAt: new Date().toISOString(),
+      enso,
+      lastError: null
+    };
+    console.log(`[refresh:enso] ${enso.phase}${enso.strength ? " (" + enso.strength + ")" : ""} — anomalie ${enso.sstAnomaly}°C (${ensoCache.updatedAt})`);
+  } catch (err) {
+    ensoCache.lastError = err.message;
+    console.error("[refresh:enso] echec :", err.message);
   }
 }
 
@@ -482,6 +499,16 @@ app.get("/earthquakes", (req, res) => {
   });
 });
 
+// GET /enso - indice ONI (El Nino / La Nina / Neutre), NOAA/CPC, mis a jour mensuellement
+app.get("/enso", (req, res) => {
+  res.json({
+    source: "NOAA/CPC — Oceanic Niño Index (ONI)",
+    updatedAt: ensoCache.updatedAt,
+    lastError: ensoCache.lastError,
+    enso: ensoCache.enso
+  });
+});
+
 // GET /epic - photos NASA EPIC/DSCOVR de la Terre entiere (proxy backend car l'API NASA ne supporte pas CORS)
 app.get("/epic", (req, res) => {
   res.json({
@@ -548,6 +575,7 @@ var httpServer = app.listen(PORT, async () => {
   await refreshNeo();
   await refreshJwst();
   await refreshEarthquakes();
+  await refreshEnso();
   // Vent Europe : PAS de refresh automatique au demarrage. Marcel controle
   // lui-meme quand la grille se (re)construit, via GET /wind-europe/refresh.
   setInterval(refreshAll, DATA_REFRESH_MS);
@@ -556,6 +584,7 @@ var httpServer = app.listen(PORT, async () => {
   setInterval(refreshNeo, 6 * 60 * 60 * 1000); // 6h : les donnees NEO bougent lentement
   setInterval(refreshJwst, 12 * 60 * 60 * 1000); // 12h : les publications NASA ne changent pas souvent
   setInterval(refreshEarthquakes, 15 * 60 * 1000); // 15 min : les seismes sont un evenement rapide
+  setInterval(refreshEnso, 24 * 60 * 60 * 1000); // 24h : le NOAA ne publie qu'1x/mois
   // Pas de setInterval automatique pour le vent Europe : uniquement sur demande (voir /wind-europe/refresh)
   setInterval(refreshHeatwave, 3 * 60 * 60 * 1000); // 3h : la prevision OWM ne change pas assez vite pour justifier plus frequent
   setInterval(refreshEpic, 60 * 60 * 1000); // 1h : cadence proche de celle des vraies prises de vue EPIC
