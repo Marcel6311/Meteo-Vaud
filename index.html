@@ -3632,7 +3632,20 @@
         var e = data.enso;
         var icon = e.phase === "El Niño" ? "🔴" : (e.phase === "La Niña" ? "🔵" : "⚪");
         var strengthStr = e.strength ? " " + e.strength : "";
-        el.textContent = icon + " " + e.phase + strengthStr + " (" + (e.sstAnomaly > 0 ? "+" : "") + e.sstAnomaly + "°C)";
+        el.textContent = icon + " " + e.phase + strengthStr + " (" + (e.sstAnomaly > 0 ? "+" : "") + e.sstAnomaly + "°C, " + e.period + ")";
+
+        // Transparence : on precise la periode couverte par la donnee (pas
+        // du temps reel) et quand notre serveur l'a recuperee, plutot que
+        // de laisser croire que le chiffre affiche est celui de maintenant.
+        var fetchedStr = data.updatedAt ? new Date(data.updatedAt).toLocaleString("fr-CH", { dateStyle: "medium", timeStyle: "short" }) : "inconnue";
+        var tooltip = "Donnée confirmée NOAA/CPC pour la période : " + e.period +
+          (e.unsmoothed ? " (valeur mensuelle non lissée)" : " (moyenne ONI 3 mois)") +
+          "\nRécupérée par le serveur le : " + fetchedStr +
+          "\nLe NOAA publie généralement ces données début du mois suivant — la situation réelle actuelle peut différer, surtout en phase d'évolution rapide.";
+        if (e.oniReference) {
+          tooltip += "\nRéférence ONI officielle (" + e.oniReference.period + ") : " + (e.oniReference.sstAnomaly > 0 ? "+" : "") + e.oniReference.sstAnomaly + "°C";
+        }
+        el.title = tooltip;
       })
       .catch(function (err) {
         console.error("[enso] echec chargement :", err);
