@@ -1043,6 +1043,7 @@
     <span>Source: MeteoSwiss (SwissMetNet, OGD) · CC-BY · Pluie: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> · Temp. Europe: <a href="https://openweathermap.org/" target="_blank" rel="noopener">OpenWeatherMap</a> · Incendies/Satellite/Aérosols/Neige/Événements: <a href="https://www.nasa.gov/" target="_blank" rel="noopener">NASA (FIRMS, GIBS, EONET)</a> · Feux UE: <a href="https://effis.jrc.ec.europa.eu/" target="_blank" rel="noopener">EFFIS/Copernicus</a></span>
     <span class="footer-refresh">
       <span id="footerMoonSun" style="margin-right: 10px;">—</span>
+      <span id="footerEnso" style="margin-right: 10px;" title="Indice ONI — NOAA/CPC, mis à jour mensuellement">—</span>
       <span id="updatedAt">—</span>
       <button id="manualRefresh" title="Rafraichir maintenant">⟳</button>
     </span>
@@ -3621,6 +3622,23 @@
     }
   }
 
+  // El Niño / La Niña — indice ONI (NOAA/CPC), mis a jour mensuellement.
+  function fetchAndRenderEnso() {
+    fetch(API_BASE + "/enso", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var el = document.getElementById("footerEnso");
+        if (!el || !data.enso) return;
+        var e = data.enso;
+        var icon = e.phase === "El Niño" ? "🔴" : (e.phase === "La Niña" ? "🔵" : "⚪");
+        var strengthStr = e.strength ? " " + e.strength : "";
+        el.textContent = icon + " " + e.phase + strengthStr + " (" + (e.sstAnomaly > 0 ? "+" : "") + e.sstAnomaly + "°C)";
+      })
+      .catch(function (err) {
+        console.error("[enso] echec chargement :", err);
+      });
+  }
+
   function loadAstro() {
     astroLoaded = true;
     renderMoonSunPanel(); // calcule localement, aucun appel reseau necessaire
@@ -4019,6 +4037,8 @@
   setInterval(loadHeatwave, 60 * 60 * 1000); // 1h : le backend lui-meme ne se rafraichit que toutes les 3h
   renderFooterMoonSun();
   setInterval(renderFooterMoonSun, 60 * 60 * 1000); // 1h : lever/coucher du soleil evolue lentement
+  fetchAndRenderEnso();
+  setInterval(fetchAndRenderEnso, 24 * 60 * 60 * 1000); // 24h : le NOAA ne publie qu'1x/mois
 
 })();
 </script>
