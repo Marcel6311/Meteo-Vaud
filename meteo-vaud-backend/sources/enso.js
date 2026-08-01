@@ -1,12 +1,12 @@
 // sources/enso.js
 //
-// Recupere l'indice ONI (Oceanic Nino Index) officiel du NOAA/CPC, qui
-// sert de reference pour determiner si on est en periode El Nino, La Nina,
-// ou neutre. Fichier texte simple, gratuit, sans cle, mis a jour une fois
-// par mois par le NOAA (autour du 5 de chaque mois).
+// Recupere deux indicateurs ENSO du NOAA/CPC (gratuit, sans cle) :
+//   1. Nino 3.4 mensuel NON lisse — reagit plus vite (retard ~1-2 mois)
+//   2. ONI (moyenne glissante 3 mois) — reference officielle, mais accuse
+//      un retard plus important en cas d'evolution rapide (comme actuellement)
 //
-// Format du fichier : "SEAS YR TOTAL ANOM" avec une ligne par periode de
-// 3 mois glissante depuis 1950 (ex: "JJA 2026  27.44   0.70").
+// Le mensuel est utilise en priorite pour l'affichage "temps reel", l'ONI
+// reste disponible en secours et pour reference.
 
 const https = require("https");
 
@@ -48,37 +48,113 @@ function classifyEnso(anomaly) {
   return { phase: phase, strength: strength };
 }
 
-async function fetchEnso() {
+// Verifie que la valeur/annee extraites sont plausibles avant de les utiliser.
+// Anomalie SST realiste : entre -4 et +4°C. Annee : proche de l'annee actuelle.
+function isPlausible(anomaly, year) {
+  var currentYear = new Date().getFullYear();
+  if (isNaN(anomaly) || Math.abs(anomaly) > 4) return false;
+  if (isNaN(year) || Math.abs(year - currentYear) > 2) return false;
+  return true;
+}
+
+async function fetchOni() {
   var url = "https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt";
   var raw = await httpGet(url);
   var lines = raw.trim().split("\n").filter(function (l) { return l.trim().length > 0; });
 
   if (lines.length < 2) throw new Error("Format ONI inattendu (fichier vide)");
 
-  // La derniere ligne est la periode la plus recente disponible
   var lastLine = lines[lines.length - 1].trim().split(/\s+/);
   if (lastLine.length < 4) throw new Error("Format ONI inattendu (colonnes manquantes)");
 
-  var season = lastLine[0]; // ex: "JJA"
+  var season = lastLine[0];
   var year = parseInt(lastLine[1]);
-  var sst = parseFloat(lastLine[2]);
   var anomaly = parseFloat(lastLine[3]);
 
-  var classification = classifyEnso(anomaly);
+  if (!isPlausible(anomaly, year)) {
+    throw new Error("ONI : valeurs implausibles (season=" + season + " year=" + year + " anomaly=" + anomaly + ")");
+  }
 
-  // Historique des 12 dernieres periodes, pour une eventuelle mini-courbe
   var history = lines.slice(-12).map(function (l) {
     var cols = l.trim().split(/\s+/);
-    return { season: cols[0], year: parseInt(cols[1]), anomaly: parseFloat(cols[3]) };
+    return { label: cols[0] + " " + cols[1], anomaly: parseFloat(cols[3]) };
   });
 
+  return { period: season + " " + year, sstAnomaly: anomaly, history: history, unsmoothed: false };
+}
+
+// Tente de lire le fichier mensuel NON lisse (plus reactif que l'ONI).
+// Le format exact n'a pas pu etre verifie a l'avance : on log les dernieres
+// lignes brutes pour pouvoir l'ajuster si besoin, et on rejette la valeur
+// si elle ne passe pas le controle de coherence (isPlausible).
+async function fetchMonthlyNino34() {
+  var url = "https://www.cpc.ncep.noaa.gov/data/indices/ersst5.nino.mth.91-20.ascii";
+  var raw = await httpGet(url);
+  var lines = raw.trim().split("\n").filter(function (l) { return l.trim().length > 0; });
+
+  if (lines.length < 2) throw new Error("Fichier mensuel Nino3.4 vide");
+
+  console.log("[enso] apercu fichier mensuel (3 dernieres lignes brutes) :");
+  lines.slice(-3).forEach(function (l) { console.log("[enso]   " + l); });
+
+  var header = lines[0].trim().split(/\s+/);
+  var lastLine = lines[lines.length - 1].trim().split(/\s+/);
+
+  // On cherche la colonne "ANOM" via l'en-tete si possible, sinon on suppose
+  // qu'elle est en derniere position (schema le plus courant sur ces fichiers CPC).
+  var anomIdx = header.findIndex(function (h) { return /anom/i.test(h); });
+  if (anomIdx === -1) anomIdx = lastLine.length - 1;
+
+  var yearIdx = header.findIndex(function (h) { return /^yr$|year/i.test(h); });
+  if (yearIdx === -1) yearIdx = 1; // souvent en 2e position sur ces fichiers
+
+  var anomaly = parseFloat(lastLine[anomIdx]);
+  var year = parseInt(lastLine[yearIdx]);
+  var monthOrSeason = lastLine[0];
+
+  if (!isPlausible(anomaly, year)) {
+    throw new Error("Mensuel Nino3.4 : valeurs implausibles (ligne=\"" + lines[lines.length - 1] + "\" anomIdx=" + anomIdx + " yearIdx=" + yearIdx + " -> anomaly=" + anomaly + " year=" + year + ")");
+  }
+
+  return { period: monthOrSeason + " " + year, sstAnomaly: anomaly, unsmoothed: true };
+}
+
+async function fetchEnso() {
+  var oni = null;
+  var monthly = null;
+  var errors = [];
+
+  try {
+    oni = await fetchOni();
+  } catch (err) {
+    errors.push("ONI: " + err.message);
+    console.error("[enso] echec ONI :", err.message);
+  }
+
+  try {
+    monthly = await fetchMonthlyNino34();
+  } catch (err) {
+    errors.push("Mensuel: " + err.message);
+    console.error("[enso] echec mensuel :", err.message);
+  }
+
+  // Priorite au mensuel (plus reactif) s'il est disponible et coherent,
+  // sinon on retombe sur l'ONI officiel.
+  var primary = monthly || oni;
+  if (!primary) {
+    throw new Error("Aucune source ENSO disponible : " + errors.join(" | "));
+  }
+
+  var classification = classifyEnso(primary.sstAnomaly);
+
   return {
-    season: season,
-    year: year,
-    sstAnomaly: anomaly,
+    period: primary.period,
+    sstAnomaly: primary.sstAnomaly,
+    unsmoothed: primary.unsmoothed,
     phase: classification.phase,
     strength: classification.strength,
-    history: history
+    oniReference: oni ? { period: oni.period, sstAnomaly: oni.sstAnomaly } : null,
+    history: oni ? oni.history : []
   };
 }
 
