@@ -16,16 +16,17 @@ var STATION = "pls"; // Lausanne
 var DATA_URL = "https://data.geo.admin.ch/ch.meteoschweiz.ogd-pollen/" + STATION + "/ogd-pollen_" + STATION + "_h_now.csv";
 var PARAMS_META_URL = "https://data.geo.admin.ch/ch.meteoschweiz.ogd-pollen/ogd-pollen_meta_parameters.csv";
 
-// Traduction francaise des types de pollen (les codes MeteoSwiss varient,
-// on matche sur des mots-cles presents dans la description du parametre).
+// Les codes MeteoSwiss utilisent les racines latines des genres botaniques
+// (confirme le 02.08 via les logs de production), pas de mots anglais/allemands.
+// Ex: kabetuh0 = Betula (bouleau), khpoach0 = Poaceae (graminees), etc.
 var POLLEN_KEYWORDS = [
-  { key: "aulne", match: /alder|erle|aun/i },
-  { key: "frene", match: /ash|esche|fren/i },
-  { key: "bouleau", match: /birch|birke|boul/i },
-  { key: "hetre", match: /beech|buche|het/i },
-  { key: "noisetier", match: /hazel|hasel|noiset/i },
-  { key: "chene", match: /oak|eiche|chen/i },
-  { key: "graminees", match: /grass|graser|gramin/i }
+  { key: "aulne", match: /aln/i },
+  { key: "frene", match: /frax/i },
+  { key: "bouleau", match: /betu/i },
+  { key: "hetre", match: /fagu/i },
+  { key: "noisetier", match: /cory/i },
+  { key: "chene", match: /quer/i },
+  { key: "graminees", match: /poac/i }
 ];
 
 function httpGet(url) {
