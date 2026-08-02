@@ -136,6 +136,11 @@
     color: var(--amber);
   }
 
+  .scope-toggle button.active.scope-dimmed {
+    color: var(--text-faint);
+    opacity: 0.5;
+  }
+
   .rain-toggle {
     font-family: var(--font-mono);
     font-size: 11px;
@@ -1706,6 +1711,8 @@
   // Rendu carte
   // -------------------------------------------------------------------
 
+  var stationsVisible = true;
+
   function clearMarkers() {
     Object.keys(markers).forEach(function (id) {
       map.removeLayer(markers[id]);
@@ -1715,6 +1722,7 @@
 
   function renderMap(readings) {
     clearMarkers();
+    if (!stationsVisible) return; // donnees gardees en memoire (currentReadings), juste pas affichees
     var radius = readings.length > 50 ? 5 : 8; // Suisse entiere = plus de points, plus petits
 
     readings.forEach(function (r) {
@@ -4155,7 +4163,22 @@
   }
 
   els.scopeToggle.querySelectorAll("button").forEach(function (btn) {
-    btn.addEventListener("click", function () { switchScope(btn.dataset.scope); });
+    btn.addEventListener("click", function () {
+      if (btn.dataset.scope === currentScope) {
+        // Reclic sur le bouton deja actif : bascule l'affichage des points au lieu de ne rien faire
+        stationsVisible = !stationsVisible;
+        btn.classList.toggle("scope-dimmed", !stationsVisible);
+        if (stationsVisible) {
+          renderMap(currentReadings || []);
+        } else {
+          clearMarkers();
+        }
+      } else {
+        stationsVisible = true; // changer de portee reaffiche toujours les points
+        els.scopeToggle.querySelectorAll("button").forEach(function (b) { b.classList.remove("scope-dimmed"); });
+        switchScope(btn.dataset.scope);
+      }
+    });
   });
 
   // Bouton de rafraichissement manuel : utile si l'appareil a mis les
