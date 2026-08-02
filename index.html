@@ -1598,10 +1598,17 @@
       }
     }).addTo(map);
 
-    if (label) layer.bindPopup("<b>" + label + "</b>").openPopup();
+    if (label) layer.bindPopup("<b>" + label + "</b><div class='spotlight-details'>🌡️ Météo…</div>").openPopup();
 
     spotlightMarkers.push(layer);
     map.fitBounds(layer.getBounds(), { padding: [40, 40] });
+
+    // Meteo au centre de la zone (pas de coordonnee ponctuelle pour un polygone)
+    if (label) {
+      var center = layer.getBounds().getCenter();
+      fetchLocateWeather(center.lat, center.lng, label, layer);
+    }
+
     return layer;
   }
 
