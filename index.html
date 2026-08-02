@@ -1549,6 +1549,39 @@
     return marker;
   }
 
+  // Meteo actuelle pour n'importe quel lieu trouve via Localiser (pas
+  // seulement les capitales suivies). Meme cle OWM que le reste de l'appli,
+  // appel direct depuis le navigateur, pas de nouveau backend necessaire.
+  function fetchLocateWeather(lat, lon, label, marker) {
+    if (!marker) return;
+    var url = "https://api.openweathermap.org/data/2.5/weather?lat=" + lat +
+      "&lon=" + lon + "&units=metric&appid=" + OWM_API_KEY + "&lang=fr";
+
+    fetch(url)
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.main) {
+          marker.setPopupContent("<b>" + label + "</b><div class='spotlight-details'>🌡️ Météo indisponible pour ce lieu</div>");
+          return;
+        }
+        var temp = Math.round(data.main.temp);
+        var feelsLike = Math.round(data.main.feels_like);
+        var description = data.weather && data.weather[0] ? data.weather[0].description : "";
+        var humidity = data.main.humidity;
+        var windSpeed = data.wind ? Math.round(data.wind.speed * 3.6) : null; // m/s -> km/h
+
+        var weatherLine = "🌡️ " + temp + "°C (ressenti " + feelsLike + "°C)";
+        if (description) weatherLine += " · " + description;
+        var detailsLine = "💧 " + humidity + "%" + (windSpeed !== null ? " · 💨 " + windSpeed + " km/h" : "");
+
+        marker.setPopupContent("<b>" + label + "</b><div class='spotlight-details'>" + weatherLine + "<br>" + detailsLine + "</div>");
+      })
+      .catch(function (err) {
+        console.error("[locate weather] echec :", err);
+        marker.setPopupContent("<b>" + label + "</b><div class='spotlight-details'>🌡️ Erreur de chargement météo</div>");
+      });
+  }
+
   /**
    * Dessine le contour reel d'une zone administrative (departement,
    * canton, region, pays...) sur la carte, a partir du GeoJSON renvoye
@@ -3150,11 +3183,15 @@
       li.appendChild(detail);
 
       li.addEventListener("click", function () {
+        var lat = parseFloat(r.lat);
+        var lon = parseFloat(r.lon);
+        var marker;
         if (r.geojson) {
           addSpotlightArea(r.geojson, r.display_name);
         } else {
-          addSpotlight(parseFloat(r.lat), parseFloat(r.lon), r.display_name);
-          map.setView([parseFloat(r.lat), parseFloat(r.lon)], 9);
+          marker = addSpotlight(lat, lon, r.display_name, ["🌡️ Météo…"]);
+          map.setView([lat, lon], 9);
+          fetchLocateWeather(lat, lon, r.display_name, marker);
         }
         // Le panneau reste ouvert expres : on peut chercher et ajouter
         // plusieurs lieux d'affilee pour les comparer sur la meme carte.
