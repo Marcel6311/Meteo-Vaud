@@ -36,6 +36,7 @@ const { fetchAllEarthquakes } = require("./sources/earthquakes");
 const { fetchEnso } = require("./sources/enso");
 const { fetchSpaceWeather } = require("./sources/spaceweather");
 const { fetchPollen } = require("./sources/pollen");
+const { fetchGlobalTemp } = require("./sources/globaltemp");
 
 const app = express();
 app.use(cors());
@@ -92,6 +93,7 @@ let earthquakeCache = { updatedAt: null, earthquakes: [], lastError: null };
 let ensoCache = { updatedAt: null, enso: null, lastError: null };
 let spaceWeatherCache = { updatedAt: null, spaceWeather: null, lastError: null };
 let pollenCache = { updatedAt: null, pollen: null, lastError: null };
+let globalTempCache = { updatedAt: null, globalTemp: null, lastError: null };
 
 function pickScope(req) {
   const scope = (req.query.scope || "vd").toLowerCase();
@@ -318,6 +320,21 @@ async function refreshPollen() {
   } catch (err) {
     pollenCache.lastError = err.message;
     console.error("[refresh:pollen] echec :", err.message);
+  }
+}
+
+async function refreshGlobalTemp() {
+  try {
+    const globalTemp = await fetchGlobalTemp();
+    globalTempCache = {
+      updatedAt: new Date().toISOString(),
+      globalTemp,
+      lastError: null
+    };
+    console.log(`[refresh:globaltemp] ${globalTemp.period} — anomalie ${globalTemp.anomaly}°C (${globalTempCache.updatedAt})`);
+  } catch (err) {
+    globalTempCache.lastError = err.message;
+    console.error("[refresh:globaltemp] echec :", err.message);
   }
 }
 
@@ -566,6 +583,17 @@ app.get("/pollen", (req, res) => {
   });
 });
 
+// GET /globaltemp - anomalie de temperature globale mensuelle (NASA GISS)
+// Rafraichi toutes les 24h (le NASA ne publie qu'1x/mois environ).
+app.get("/globaltemp", (req, res) => {
+  res.json({
+    source: "NASA GISS — GISTEMP v4 (anomalie vs moyenne 1951-1980)",
+    updatedAt: globalTempCache.updatedAt,
+    lastError: globalTempCache.lastError,
+    globalTemp: globalTempCache.globalTemp
+  });
+});
+
 // GET /epic - photos NASA EPIC/DSCOVR de la Terre entiere (proxy backend car l'API NASA ne supporte pas CORS)
 app.get("/epic", (req, res) => {
   res.json({
@@ -635,6 +663,7 @@ var httpServer = app.listen(PORT, async () => {
   await refreshEnso();
   await refreshSpaceWeather();
   await refreshPollen();
+  await refreshGlobalTemp();
   // Vent Europe : PAS de refresh automatique au demarrage. Marcel controle
   // lui-meme quand la grille se (re)construit, via GET /wind-europe/refresh.
   setInterval(refreshAll, DATA_REFRESH_MS);
@@ -646,6 +675,7 @@ var httpServer = app.listen(PORT, async () => {
   setInterval(refreshEnso, 24 * 60 * 60 * 1000); // 24h : le NOAA ne publie qu'1x/mois
   setInterval(refreshSpaceWeather, 3 * 60 * 60 * 1000); // 3h : cadence native du Kp
   setInterval(refreshPollen, 60 * 60 * 1000); // 1h : cadence native de la donnee pollen
+  setInterval(refreshGlobalTemp, 24 * 60 * 60 * 1000); // 24h : le NASA ne publie qu'1x/mois environ
   // Pas de setInterval automatique pour le vent Europe : uniquement sur demande (voir /wind-europe/refresh)
   setInterval(refreshHeatwave, 3 * 60 * 60 * 1000); // 3h : la prevision OWM ne change pas assez vite pour justifier plus frequent
   setInterval(refreshEpic, 60 * 60 * 1000); // 1h : cadence proche de celle des vraies prises de vue EPIC
