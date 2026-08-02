@@ -1597,7 +1597,9 @@
           var placeLocalTime = new Date(Date.now() + data.timezone * 1000);
           var placeTimeStr = placeLocalTime.toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
 
-          timeLine = "🕐 " + placeTimeStr + " sur place · " + diffStr;
+          var myTimeStr = new Date().toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit" });
+
+          timeLine = "🕐 " + placeTimeStr + " sur place (toi : " + myTimeStr + ") · " + diffStr;
         }
 
         var popupHtml = "<b>" + label + "</b><div class='spotlight-details'>" + weatherLine + "<br>" + detailsLine;
