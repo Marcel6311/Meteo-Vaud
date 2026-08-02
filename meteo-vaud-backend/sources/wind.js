@@ -18,6 +18,14 @@ const https = require("https");
 
 var OWM_API_KEY = process.env.OWM_API_KEY || "40e0a05ac561c2b71d1f2610cae0012d";
 
+// Etat de progression partage, lisible par server.js pendant la construction
+// (sans avoir a attendre la fin), pour afficher un % / temps restant a Marcel.
+var progress = { inProgress: false, processed: 0, total: 0, startedAt: null };
+
+function getProgress() {
+  return progress;
+}
+
 var EUROPE_GRID = { lonMin: -12, lonMax: 32, lonStep: 2, latMin: 34, latMax: 71, latStep: 2 };
 
 function buildGrid(cfg) {
@@ -98,6 +106,10 @@ async function fetchEuropeWindGrid() {
   var vData = new Array(allPoints.length).fill(0);
 
   console.log("[wind] Europe : " + allPoints.length + " points a recuperer (OpenWeatherMap, ~1 point/1.1s)...");
+  progress.inProgress = true;
+  progress.processed = 0;
+  progress.total = allPoints.length;
+  progress.startedAt = Date.now();
 
   for (var i = 0; i < allPoints.length; i++) {
     var p = allPoints[i];
@@ -116,6 +128,8 @@ async function fetchEuropeWindGrid() {
       console.error("[wind] echec point " + p.lat + "," + p.lon + " : " + err.message);
     }
 
+    progress.processed = i + 1;
+
     if ((i + 1) % 50 === 0) {
       console.log("[wind] " + (i + 1) + "/" + allPoints.length + " points...");
     }
@@ -124,6 +138,8 @@ async function fetchEuropeWindGrid() {
       await sleep(1100);
     }
   }
+
+  progress.inProgress = false;
 
   var nx = lonsAsc.length;
   var ny = latsDesc.length;
@@ -155,4 +171,4 @@ async function fetchEuropeWindGrid() {
   ];
 }
 
-module.exports = { fetchEuropeWindGrid };
+module.exports = { fetchEuropeWindGrid, getProgress };
