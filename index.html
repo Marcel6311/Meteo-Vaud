@@ -1574,7 +1574,37 @@
         if (description) weatherLine += " · " + description;
         var detailsLine = "💧 " + humidity + "%" + (windSpeed !== null ? " · 💨 " + windSpeed + " km/h" : "");
 
-        marker.setPopupContent("<b>" + label + "</b><div class='spotlight-details'>" + weatherLine + "<br>" + detailsLine + "</div>");
+        // Decalage horaire par rapport a Marcel : data.timezone = decalage UTC
+        // du lieu en secondes (fourni par OpenWeatherMap). getTimezoneOffset()
+        // du navigateur est en minutes A L'OUEST de UTC (signe inverse), d'ou le -1 *.
+        var timeLine = "";
+        if (data.timezone !== undefined) {
+          var placeOffsetMin = data.timezone / 60; // secondes -> minutes
+          var localOffsetMin = -1 * new Date().getTimezoneOffset(); // deja en minutes, signe inverse par convention JS
+          var diffMin = placeOffsetMin - localOffsetMin;
+
+          var diffStr;
+          if (diffMin === 0) {
+            diffStr = "même fuseau que toi";
+          } else {
+            var sign = diffMin > 0 ? "+" : "-";
+            var absMin = Math.abs(diffMin);
+            var h = Math.floor(absMin / 60);
+            var m = absMin % 60;
+            diffStr = sign + h + ":" + (m < 10 ? "0" : "") + m + " par rapport à toi";
+          }
+
+          var placeLocalTime = new Date(Date.now() + data.timezone * 1000);
+          var placeTimeStr = placeLocalTime.toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+
+          timeLine = "🕐 " + placeTimeStr + " sur place · " + diffStr;
+        }
+
+        var popupHtml = "<b>" + label + "</b><div class='spotlight-details'>" + weatherLine + "<br>" + detailsLine;
+        if (timeLine) popupHtml += "<br>" + timeLine;
+        popupHtml += "</div>";
+
+        marker.setPopupContent(popupHtml);
       })
       .catch(function (err) {
         console.error("[locate weather] echec :", err);
