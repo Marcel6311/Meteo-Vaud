@@ -31,7 +31,7 @@ const { fetchEpicFrames } = require("./sources/epic");
 const { fetchFirmsData } = require("./sources/firms");
 const { fetchApod, fetchNeo } = require("./sources/nasa");
 const { fetchJwstImages } = require("./sources/jwst");
-const { fetchEuropeWindGrid } = require("./sources/wind");
+const { fetchEuropeWindGrid, getProgress: getWindProgress } = require("./sources/wind");
 const { fetchAllEarthquakes } = require("./sources/earthquakes");
 const { fetchEnso } = require("./sources/enso");
 const { fetchSpaceWeather } = require("./sources/spaceweather");
@@ -535,6 +535,29 @@ app.get("/wind-europe/refresh", (req, res) => {
   windEuropeRefreshInProgress = true;
   refreshWindEurope().finally(() => { windEuropeRefreshInProgress = false; });
   res.json({ status: "demarre", message: "Construction de la grille Europe lancee (~7-8 minutes). Consultez /wind-europe pour verifier l'avancement (updatedAt)." });
+});
+
+// GET /wind-europe/status - consultation seule, ne declenche jamais rien.
+// Renvoie la progression (%) et une estimation du temps restant pendant
+// la construction, pour eviter d'avoir a checker les logs Render.
+app.get("/wind-europe/status", (req, res) => {
+  const p = getWindProgress();
+  if (!p.inProgress) {
+    return res.json({ inProgress: false });
+  }
+  const elapsedMs = Date.now() - p.startedAt;
+  const percent = p.total > 0 ? Math.round((p.processed / p.total) * 100) : 0;
+  const msPerPoint = p.processed > 0 ? elapsedMs / p.processed : 1100;
+  const remainingPoints = p.total - p.processed;
+  const estimatedRemainingSeconds = Math.round((remainingPoints * msPerPoint) / 1000);
+
+  res.json({
+    inProgress: true,
+    processed: p.processed,
+    total: p.total,
+    percent,
+    estimatedRemainingSeconds
+  });
 });
 
 // GET /earthquakes - seismes recents (USGS mondial + SED Suisse combines)
