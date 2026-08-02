@@ -985,6 +985,7 @@
       <button class="rain-toggle" id="windEuropeToggle">🌀 VENT ANIMÉ EUROPE</button>
       <button class="rain-toggle" id="snowToggle">❄️ NEIGE</button>
       <button class="rain-toggle" id="eonetToggle">🌎 ÉVÉNEMENTS</button>
+      <button class="rain-toggle" id="pollenToggle">🌾 POLLEN</button>
       <button class="rain-toggle" id="effisToggle">🔥🇪🇺 FEUX UE (7j)</button>
       <button class="rain-toggle" id="epicToggle">🌍 TERRE EN DIRECT</button>
       <button class="rain-toggle" id="astroToggle">🔭 ESPACE</button>
@@ -1156,6 +1157,24 @@
           <tr><td colspan="5" class="loading-msg">Chargement...</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<div class="capitals-overlay" id="pollenOverlay">
+  <div class="capitals-panel" style="max-width: 480px;">
+    <div class="capitals-header">
+      <div>
+        <h2>🌾 Pollen — Lausanne</h2>
+        <div class="capitals-sub" id="pollenSub">—</div>
+      </div>
+      <button class="detail-close" id="pollenClose">✕</button>
+    </div>
+    <div style="padding: 22px;">
+      <div id="pollenList" style="font-size: 13px;">Chargement...</div>
+    </div>
+    <div class="hrecord" style="padding: 8px 22px; color: var(--text-faint); font-size: 10px; border-top: 1px solid var(--hairline);">
+      Source : MeteoSwiss — réseau national de pollen, station Lausanne (PLS)
     </div>
   </div>
 </div>
@@ -1347,6 +1366,9 @@
     epicPlay: document.getElementById("epicPlay"),
     epicNext: document.getElementById("epicNext"),
     epicTimestamp: document.getElementById("epicTimestamp"),
+    pollenToggle: document.getElementById("pollenToggle"),
+    pollenOverlay: document.getElementById("pollenOverlay"),
+    pollenClose: document.getElementById("pollenClose"),
     eonetOverlay: document.getElementById("eonetOverlay"),
     eonetClose: document.getElementById("eonetClose"),
     eonetSub: document.getElementById("eonetSub"),
@@ -3393,6 +3415,79 @@
       els.eonetOverlay.classList.remove("open");
       els.eonetSearch.value = "";
       els.eonetSearchCount.textContent = "";
+    }
+  });
+
+  // -------------------------------------------------------------------
+  // Pollen — MeteoSwiss, station Lausanne (PLS)
+  // -------------------------------------------------------------------
+
+  var POLLEN_LABELS = {
+    aulne: "🌳 Aulne",
+    frene: "🌳 Frêne",
+    bouleau: "🌳 Bouleau",
+    hetre: "🌳 Hêtre",
+    noisetier: "🌳 Noisetier",
+    chene: "🌳 Chêne",
+    graminees: "🌾 Graminées"
+  };
+
+  var LEVEL_COLORS = {
+    "Absent": "var(--text-faint)",
+    "Faible": "#66c2a5",
+    "Moyen": "#fee08b",
+    "Fort": "#fdae61",
+    "Très fort": "#d53e4f"
+  };
+
+  var pollenLoaded = false;
+
+  function loadPollen() {
+    pollenLoaded = true;
+    fetch(API_BASE + "/pollen", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.pollen || !data.pollen.readings) {
+          document.getElementById("pollenList").innerHTML = "<em>Données pas encore disponibles.</em>";
+          return;
+        }
+        var p = data.pollen;
+        document.getElementById("pollenSub").textContent = p.station + " · " + (p.timestamp || "—");
+
+        var html = '<table style="width:100%; border-collapse:collapse;">';
+        p.readings.forEach(function (r) {
+          var label = POLLEN_LABELS[r.type] || r.type;
+          var color = LEVEL_COLORS[r.level] || "var(--text-dim)";
+          var value = r.value !== null ? r.value + " grains/m³" : "—";
+          html += '<tr style="border-bottom:1px solid var(--hairline);">';
+          html += '<td style="padding:8px 4px;">' + label + '</td>';
+          html += '<td style="padding:8px 4px; text-align:right; color:var(--text-faint); font-size:11px;">' + value + '</td>';
+          html += '<td style="padding:8px 4px; text-align:right; width:90px;"><span style="color:' + color + '; font-weight:bold;">' + (r.level || "—") + '</span></td>';
+          html += '</tr>';
+        });
+        html += '</table>';
+        html += '<div style="color:var(--text-faint); font-size:10px; margin-top:12px;">Concentration horaire en grains par m³ d\'air. Seuils indicatifs, varient légèrement selon le type de pollen.</div>';
+
+        document.getElementById("pollenList").innerHTML = html;
+      })
+      .catch(function (err) {
+        console.error("[pollen] echec chargement :", err);
+        document.getElementById("pollenList").innerHTML = "<em>Erreur de chargement.</em>";
+      });
+  }
+
+  els.pollenToggle.addEventListener("click", function () {
+    els.pollenOverlay.classList.add("open");
+    if (!pollenLoaded) loadPollen();
+  });
+
+  els.pollenClose.addEventListener("click", function () {
+    els.pollenOverlay.classList.remove("open");
+  });
+
+  els.pollenOverlay.addEventListener("click", function (e) {
+    if (e.target === els.pollenOverlay) {
+      els.pollenOverlay.classList.remove("open");
     }
   });
 
