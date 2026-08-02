@@ -1050,6 +1050,7 @@
     <span class="footer-refresh">
       <span id="footerMoonSun" style="margin-right: 10px;">—</span>
       <span id="footerEnso" style="margin-right: 10px;" title="Indice ONI — NOAA/CPC, mis à jour mensuellement">—</span>
+      <span id="footerHottest" style="margin-right: 10px;" title="Le plus chaud parmi 10 lieux extrêmes connus suivis (pas un scan mondial complet)">—</span>
       <span id="updatedAt">—</span>
       <button id="manualRefresh" title="Rafraichir maintenant">⟳</button>
     </span>
@@ -3761,6 +3762,40 @@
       });
   }
 
+  // Le plus chaud parmi les lieux extremes connus (reutilise l'endpoint
+  // /capitals/current?region=extremes deja existant, aucun nouveau backend).
+  function fetchAndRenderHottest() {
+    // Combine toutes les regions de capitales deja suivies + les lieux extremes,
+    // pour une base plus large qu'une seule liste de 15 points. Reste une
+    // selection de villes/lieux connus, pas un scan complet de la planete.
+    var regions = ["europe", "north_america", "south_america", "africa", "asia", "oceania", "extremes"];
+    var fetches = regions.map(function (region) {
+      return fetch(API_BASE + "/capitals/current?region=" + region, { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .catch(function () { return { readings: [] }; }); // une region qui echoue ne bloque pas les autres
+    });
+
+    Promise.all(fetches).then(function (results) {
+      var el = document.getElementById("footerHottest");
+      if (!el) return;
+
+      var allReadings = [];
+      results.forEach(function (data) {
+        if (data.readings) allReadings = allReadings.concat(data.readings);
+      });
+
+      var hottest = null;
+      allReadings.forEach(function (r) {
+        if (r.temperature === null || r.temperature === undefined) return;
+        if (!hottest || r.temperature > hottest.temperature) hottest = r;
+      });
+      if (!hottest) return;
+
+      el.textContent = "🔥 " + hottest.capital + " " + hottest.temperature.toFixed(1) + "°C";
+      el.title = "Le plus chaud parmi " + allReadings.length + " villes/lieux suivis par l'appli (capitales mondiales + lieux extrêmes) — pas un scan complet de la planète.";
+    });
+  }
+
   // Météo spatiale — indice Kp, niveau de tempête geomagnetique, alerte aurores
   function fetchAndRenderSpaceWeather() {
     fetch(API_BASE + "/spaceweather", { cache: "no-store" })
@@ -4211,6 +4246,8 @@
   setInterval(renderFooterMoonSun, 60 * 60 * 1000); // 1h : lever/coucher du soleil evolue lentement
   fetchAndRenderEnso();
   setInterval(fetchAndRenderEnso, 24 * 60 * 60 * 1000); // 24h : le NOAA ne publie qu'1x/mois
+  fetchAndRenderHottest();
+  setInterval(fetchAndRenderHottest, 60 * 60 * 1000); // 1h : aligne sur le refresh backend des capitales/extremes
 
 })();
 </script>
