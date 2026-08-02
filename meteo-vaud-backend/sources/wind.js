@@ -28,9 +28,14 @@ function buildGrid(cfg) {
   return { lons: lons, lats: lats };
 }
 
+// Delai maximum par requete (ms). Sans ca, une requete qui ne repond
+// jamais (probleme reseau silencieux) bloque toute la construction pour
+// toujours, sans erreur ni progression - c'est ce qui s'est produit le 02.08.
+var REQUEST_TIMEOUT_MS = 10000;
+
 function httpGet(url) {
   return new Promise(function (resolve, reject) {
-    https.get(url, function (res) {
+    var req = https.get(url, function (res) {
       var data = "";
       res.on("data", function (chunk) { data += chunk; });
       res.on("end", function () {
@@ -40,7 +45,11 @@ function httpGet(url) {
           resolve(data);
         }
       });
-    }).on("error", reject);
+    });
+    req.on("error", reject);
+    req.setTimeout(REQUEST_TIMEOUT_MS, function () {
+      req.destroy(new Error("Timeout apres " + (REQUEST_TIMEOUT_MS / 1000) + "s sans reponse"));
+    });
   });
 }
 
