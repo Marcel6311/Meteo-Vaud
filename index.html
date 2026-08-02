@@ -988,6 +988,7 @@
       <button class="rain-toggle" id="camsToggle">🌫️ PM2.5</button>
       <button class="rain-toggle" id="windToggle">💨 VENT</button>
       <button class="rain-toggle" id="windEuropeToggle">🌀 VENT ANIMÉ EUROPE</button>
+      <span id="windEuropeStatus" style="font-family:var(--font-mono); font-size:11px; color:var(--text-faint); align-self:center; margin-right:8px;"></span>
       <button class="rain-toggle" id="snowToggle">❄️ NEIGE</button>
       <button class="rain-toggle" id="eonetToggle">🌎 ÉVÉNEMENTS</button>
       <button class="rain-toggle" id="pollenToggle">🌾 POLLEN</button>
@@ -2687,6 +2688,46 @@
         console.error("[vent europe] echec chargement :", err);
       });
   }
+
+  // Suivi automatique de la progression, sans jamais rien declencher soi-meme
+  // (endpoint /wind-europe/status = consultation seule). Verifie toutes les
+  // 15s tant qu'une construction est en cours, s'arrete d'elle-meme sinon.
+  var windEuropeStatusTimer = null;
+
+  function checkWindEuropeStatus() {
+    fetch(API_BASE + "/wind-europe/status", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (status) {
+        var el = document.getElementById("windEuropeStatus");
+        if (!el) return;
+
+        if (!status.inProgress) {
+          el.textContent = "";
+          if (windEuropeStatusTimer) {
+            clearInterval(windEuropeStatusTimer);
+            windEuropeStatusTimer = null;
+          }
+          return;
+        }
+
+        var mins = Math.floor(status.estimatedRemainingSeconds / 60);
+        var secs = status.estimatedRemainingSeconds % 60;
+        var etaStr = mins > 0 ? mins + " min " + secs + "s" : secs + "s";
+        el.textContent = "⏳ " + status.percent + "% (~" + etaStr + " restantes)";
+
+        // Demarre le suivi periodique si pas deja actif
+        if (!windEuropeStatusTimer) {
+          windEuropeStatusTimer = setInterval(checkWindEuropeStatus, 15000);
+        }
+      })
+      .catch(function (err) {
+        console.error("[vent europe status] echec :", err);
+      });
+  }
+
+  // Verifie l'etat au chargement de la page : si une construction etait deja
+  // en cours (lancee depuis un autre appareil par exemple), on la voit direct.
+  checkWindEuropeStatus();
 
   els.windEuropeToggle.addEventListener("click", function () {
     windEuropeVisible = !windEuropeVisible;
