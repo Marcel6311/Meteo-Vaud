@@ -985,6 +985,7 @@
       <button class="rain-toggle" id="satelliteToggle">🛰 SATELLITE</button>
       <button class="rain-toggle" id="aerosolToggle">💨 AÉROSOLS</button>
       <button class="rain-toggle" id="earthquakeToggle">🫨 SÉISMES</button>
+      <button class="rain-toggle" id="earthquakeInfoToggle" title="Repères pratiques">ℹ️</button>
       <button class="rain-toggle" id="camsToggle">🌫️ PM2.5</button>
       <button class="rain-toggle" id="windToggle">💨 VENT</button>
       <button class="rain-toggle" id="windEuropeToggle">🌀 VENT ANIMÉ EUROPE</button>
@@ -1187,6 +1188,48 @@
   </div>
 </div>
 
+<div class="capitals-overlay" id="earthquakeInfoOverlay">
+  <div class="capitals-panel" style="max-width: 480px;">
+    <div class="capitals-header">
+      <div>
+        <h2>🫨 Repères pratiques — Magnitude</h2>
+      </div>
+      <button class="detail-close" id="earthquakeInfoClose">✕</button>
+    </div>
+    <div style="padding: 22px; font-size: 13px; line-height: 1.7;">
+      <table style="width:100%; border-collapse:collapse;">
+        <tr style="border-bottom:1px solid var(--hairline);">
+          <td style="padding:8px 4px; color:var(--amber); font-weight:bold; white-space:nowrap;">< 2</td>
+          <td style="padding:8px 4px; color:var(--text-dim);">Généralement imperceptible, détecté seulement par les instruments</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--hairline);">
+          <td style="padding:8px 4px; color:#abdda4; font-weight:bold; white-space:nowrap;">2 – 3.5</td>
+          <td style="padding:8px 4px; color:var(--text-dim);">Parfois ressenti localement si peu profond, rarement de dégâts</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--hairline);">
+          <td style="padding:8px 4px; color:#fee08b; font-weight:bold; white-space:nowrap;">4 – 5</td>
+          <td style="padding:8px 4px; color:var(--text-dim);">Ressenti largement, petits dégâts possibles (fissures, objets qui tombent)</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--hairline);">
+          <td style="padding:8px 4px; color:#fdae61; font-weight:bold; white-space:nowrap;">5 – 6</td>
+          <td style="padding:8px 4px; color:var(--text-dim);">Dégâts modérés à significatifs sur bâtiments mal conçus</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--hairline);">
+          <td style="padding:8px 4px; color:#f46d43; font-weight:bold; white-space:nowrap;">6 – 7</td>
+          <td style="padding:8px 4px; color:var(--text-dim);">Destructeur dans la zone épicentrale</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 4px; color:#d53e4f; font-weight:bold; white-space:nowrap;">7+</td>
+          <td style="padding:8px 4px; color:var(--text-dim);">Majeur, dégâts sur une large zone</td>
+        </tr>
+      </table>
+      <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--hairline); font-size:11px; color:var(--text-faint);">
+        Les séismes des dernières 24h sont signalés par une <b style="color:#fff;">couronne blanche</b> autour du point.
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="capitals-overlay" id="eonetOverlay">
   <div class="capitals-panel" style="max-width: 560px;">
     <div class="capitals-header">
@@ -1356,6 +1399,9 @@
     satelliteToggle: document.getElementById("satelliteToggle"),
     aerosolToggle: document.getElementById("aerosolToggle"),
     earthquakeToggle: document.getElementById("earthquakeToggle"),
+    earthquakeInfoToggle: document.getElementById("earthquakeInfoToggle"),
+    earthquakeInfoOverlay: document.getElementById("earthquakeInfoOverlay"),
+    earthquakeInfoClose: document.getElementById("earthquakeInfoClose"),
     snowToggle: document.getElementById("snowToggle"),
     eonetToggle: document.getElementById("eonetToggle"),
     effisToggle: document.getElementById("effisToggle"),
@@ -2581,6 +2627,20 @@
       if (earthquakeData) renderEarthquakeMarkers();
     } else {
       clearEarthquakeMarkers();
+    }
+  });
+
+  els.earthquakeInfoToggle.addEventListener("click", function () {
+    els.earthquakeInfoOverlay.classList.add("open");
+  });
+
+  els.earthquakeInfoClose.addEventListener("click", function () {
+    els.earthquakeInfoOverlay.classList.remove("open");
+  });
+
+  els.earthquakeInfoOverlay.addEventListener("click", function (e) {
+    if (e.target === els.earthquakeInfoOverlay) {
+      els.earthquakeInfoOverlay.classList.remove("open");
     }
   });
 
