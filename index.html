@@ -1226,6 +1226,30 @@
       <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--hairline); font-size:11px; color:var(--text-faint);">
         Les séismes des dernières 24h sont signalés par une <b style="color:#fff;">couronne blanche</b> autour du point.
       </div>
+
+      <div style="margin-top:20px; padding-top:16px; border-top:2px solid var(--hairline);">
+        <div style="font-weight:bold; font-size:14px; color:var(--amber); margin-bottom:12px;">🌫️ Légende PM2.5 (µg/m³)</div>
+        <img src="https://eccharts.ecmwf.int/wms/?service=wms&token=public&request=GetLegend&layers=composition_pm2p5&width=350&height=50" alt="Légende PM2.5 CAMS" style="max-width:100%; background:#fff; padding:4px; border-radius:4px; margin-bottom:10px; display:block;">
+        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+          <tr style="border-bottom:1px solid var(--hairline);">
+            <td style="padding:6px 4px; font-weight:bold; white-space:nowrap;">20 – 50</td>
+            <td style="padding:6px 4px; color:var(--text-dim);">Bon à modéré — au-dessus du seuil OMS (15 µg/m³)</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--hairline);">
+            <td style="padding:6px 4px; font-weight:bold; white-space:nowrap;">50 – 150</td>
+            <td style="padding:6px 4px; color:var(--text-dim);">Dégradé — personnes sensibles affectées</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--hairline);">
+            <td style="padding:6px 4px; font-weight:bold; white-space:nowrap;">150 – 300</td>
+            <td style="padding:6px 4px; color:var(--text-dim);">Mauvais — risque pour la santé générale</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 4px; font-weight:bold; white-space:nowrap;">> 300</td>
+            <td style="padding:6px 4px; color:var(--text-dim);">Très mauvais — incendies, pollution extrême</td>
+          </tr>
+        </table>
+        <div style="margin-top:10px; font-size:11px; color:var(--text-faint);">Source : Copernicus CAMS/ECMWF · Seuil OMS : 15 µg/m³ (moyenne annuelle recommandée)</div>
+      </div>
     </div>
   </div>
 </div>
