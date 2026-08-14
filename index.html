@@ -980,6 +980,7 @@
       </div>
       <button class="rain-toggle" id="rainToggle">☂ PLUIE</button>
       <button class="rain-toggle" id="lightningToggle">⚡ FOUDRE</button>
+      <button class="rain-toggle" id="radiationToggle">☢️ RADIOACTIVITÉ</button>
       <button class="rain-toggle" id="tempToggle">🌡 TEMPERATURE</button>
       <button class="rain-toggle" id="fireToggle">🔥 INCENDIES</button>
       <button class="rain-toggle" id="satelliteToggle">🛰 SATELLITE</button>
@@ -1418,6 +1419,7 @@
     scopeToggle: document.getElementById("scopeToggle"),
     rainToggle: document.getElementById("rainToggle"),
     lightningToggle: document.getElementById("lightningToggle"),
+    radiationToggle: document.getElementById("radiationToggle"),
     tempToggle: document.getElementById("tempToggle"),
     fireToggle: document.getElementById("fireToggle"),
     satelliteToggle: document.getElementById("satelliteToggle"),
@@ -1980,6 +1982,13 @@
     var center = map.getCenter();
     var zoom = Math.round(map.getZoom());
     window.open("https://map.blitzortung.org/#" + zoom + "/" + center.lat.toFixed(1) + "/" + center.lng.toFixed(1), "_blank");
+  });
+
+  // Radioactivite — carte officielle EURDEP (Commission Europeenne / JRC)
+  // Pas d'integration directe possible : format proprietaire complexe.
+  // On ouvre la carte officielle dans un nouvel onglet.
+  els.radiationToggle.addEventListener("click", function () {
+    window.open("https://remap.jrc.ec.europa.eu/Simple.aspx", "_blank");
   });
 
   // -------------------------------------------------------------------
