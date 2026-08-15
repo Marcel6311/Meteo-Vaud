@@ -2844,19 +2844,23 @@
     return ((280.46 + 0.9856474 * days) % 360 + 360) % 360;
   }
 
-  // Approximer la position celeste (lat, lon Leaflet) d'une comete
-  // a partir de sa date d'approche : la comete est grossierement
-  // dans la direction anti-solaire au moment de l'approche terrestre.
+  // Repartir les cometes uniformement autour du globe par index.
+  // La position geographique d'une comete en approche n'a pas de sens :
+  // elle est visible depuis tout l'hemisphere nuit. On place les marqueurs
+  // de facon evocatrice et equilibree couvrant toutes les regions.
+  var COMET_LATS = [48, -25, 55, -38, 35, -10, 60, -45]; // variete de latitudes
+  var COMET_LON_OFFSETS = [10, 100, -80, 140, -150, 40, -40, 170]; // repartition mondiale
   function cometSkyPos(cdStr, index) {
-    var lon = ((sunLonAtDate(cdStr) + 180 + index * 20) % 360) - 180;
-    var lat = (index % 3 - 1) * 18; // etaler sur -18 / 0 / +18 deg
+    var lat = COMET_LATS[index % COMET_LATS.length];
+    var lon = COMET_LON_OFFSETS[index % COMET_LON_OFFSETS.length];
     return [lat, lon];
   }
 
-  // Position d'entree (depuis "l'espace profond"), 60 deg plus loin
+  // Position d'entree : meme latitude, 50 deg plus a l'est (direction d'arrivee)
   function cometEntryPos(cdStr, index) {
-    var lon = ((sunLonAtDate(cdStr) + 180 + index * 20 + 60) % 360) - 180;
-    var lat = (index % 3 - 1) * 18;
+    var lat = COMET_LATS[index % COMET_LATS.length];
+    var lon = COMET_LON_OFFSETS[index % COMET_LON_OFFSETS.length] + 55;
+    if (lon > 180) lon -= 360;
     return [lat, lon];
   }
 
@@ -2958,7 +2962,8 @@
           "<span style='color:var(--text-dim)'>Approche : </span>" + (c.cd || "—") + "<br>" +
           "<span style='color:var(--text-dim)'>Distance : </span>" + formatAU(c.dist) + "<br>" +
           "<span style='color:var(--text-dim)'>Vitesse : </span>" + (c.v_rel ? parseFloat(c.v_rel).toFixed(2) + " km/s" : "—") + "<br>" +
-          "<span style='color:var(--text-dim)'>Délai : </span>" + daysUntil(c.cd || "") +
+          "<span style='color:var(--text-dim)'>Délai : </span>" + daysUntil(c.cd || "") + "<br>" +
+          "<span style='color:#9B30FF;font-size:11px'>🌍 Visible depuis l'hémisphère nuit entier</span>" +
           "</div>",
           { maxWidth: 280 }
         )
