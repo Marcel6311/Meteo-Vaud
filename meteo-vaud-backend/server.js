@@ -95,6 +95,7 @@ let spaceWeatherCache = { updatedAt: null, spaceWeather: null, lastError: null }
 let pollenCache = { updatedAt: null, pollen: null, lastError: null };
 let globalTempCache = { updatedAt: null, globalTemp: null, lastError: null };
 let meteoriteCache = { updatedAt: null, meteorites: [], lastError: null };
+let cometCache = { updatedAt: null, comets: [], lastError: null };
 
 function pickScope(req) {
   const scope = (req.query.scope || "vd").toLowerCase();
@@ -392,6 +393,33 @@ async function refreshMeteorites() {
   }
 }
 
+async function refreshComets() {
+  try {
+    // Cometes avec approche < 2 UA dans les 2 prochaines annees (JPL SBDB CAD API)
+    const url = "https://ssd-api.jpl.nasa.gov/cad.api" +
+      "?comet=true" +
+      "&dist-max=2au" +
+      "&date-min=now" +
+      "&date-max=%2B730" +
+      "&sort=dist" +
+      "&fullname=true";
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("JPL SBDB HTTP " + r.status);
+    const data = await r.json();
+    const fields = data.fields;
+    const comets = (data.data || []).map(row => {
+      const obj = {};
+      fields.forEach((f, i) => { obj[f] = row[i]; });
+      return obj;
+    });
+    cometCache = { updatedAt: new Date().toISOString(), comets, lastError: null };
+    console.log(`[refresh:comets] ${comets.length} cometes recuperees (${cometCache.updatedAt})`);
+  } catch (err) {
+    cometCache.lastError = err.message;
+    console.error("[refresh:comets] echec :", err.message);
+  }
+}
+
 // GET /health - verification rapide de l'etat du service
 app.get("/health", (req, res) => {
   const capitalsHealth = {};
@@ -684,6 +712,18 @@ app.get("/meteorites", (req, res) => {
   });
 });
 
+// GET /comets - cometes avec approche < 2 UA dans les 2 prochaines annees (JPL SBDB)
+// Rafraichi toutes les 6h.
+app.get("/comets", (req, res) => {
+  res.json({
+    source: "JPL Small Body Database (SBDB) — Close Approach Data",
+    updatedAt: cometCache.updatedAt,
+    lastError: cometCache.lastError,
+    count: cometCache.comets.length,
+    comets: cometCache.comets
+  });
+});
+
 // GET /epic - photos NASA EPIC/DSCOVR de la Terre entiere (proxy backend car l'API NASA ne supporte pas CORS)
 app.get("/epic", (req, res) => {
   res.json({
@@ -755,6 +795,7 @@ var httpServer = app.listen(PORT, async () => {
   await refreshPollen();
   await refreshGlobalTemp();
   await refreshMeteorites();
+  await refreshComets();
   // Vent Europe : PAS de refresh automatique au demarrage. Marcel controle
   // lui-meme quand la grille se (re)construit, via GET /wind-europe/refresh.
   setInterval(refreshAll, DATA_REFRESH_MS);
@@ -768,6 +809,7 @@ var httpServer = app.listen(PORT, async () => {
   setInterval(refreshPollen, 60 * 60 * 1000); // 1h : cadence native de la donnee pollen
   setInterval(refreshGlobalTemp, 24 * 60 * 60 * 1000); // 24h : le NASA ne publie qu'1x/mois environ
   setInterval(refreshMeteorites, 24 * 60 * 60 * 1000); // 24h : dataset quasi-statique
+  setInterval(refreshComets, 6 * 60 * 60 * 1000);    // 6h : les approches bougent peu
   // Pas de setInterval automatique pour le vent Europe : uniquement sur demande (voir /wind-europe/refresh)
   setInterval(refreshHeatwave, 3 * 60 * 60 * 1000); // 3h : la prevision OWM ne change pas assez vite pour justifier plus frequent
   setInterval(refreshEpic, 60 * 60 * 1000); // 1h : cadence proche de celle des vraies prises de vue EPIC
