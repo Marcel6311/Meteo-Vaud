@@ -2751,7 +2751,7 @@
         "<span style='color:var(--text-dim)'>Type : </span>" + (d.recclass || "—") + "<br>" +
         "<span style='color:var(--text-dim)'>Masse : </span>" + formatMass(mass) + "<br>" +
         "<span style='color:var(--text-dim)'>Année : </span>" + meteorYear(d.year) + "<br>" +
-        "<span style='color:var(--text-dim)'>Statut : </span>" + (d.fall || "—") +
+        "<span style='color:var(--text-dim)'>Statut : </span>" + (d.fall === "Fell" ? "Observée" : d.fall === "Found" ? "Trouvée" : (d.fall || "—")) +
         "</div>",
         { maxWidth: 240 }
       );
