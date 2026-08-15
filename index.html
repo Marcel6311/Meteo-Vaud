@@ -2961,13 +2961,22 @@
     els.cometToggle.textContent = "⏳ COMÈTES…";
     els.cometToggle.disabled = true;
 
-    fetch(API_BASE + "/comets")
+    // JPL SBDB supporte CORS — appel direct sans passer par Render
+    var url = "https://ssd-api.jpl.nasa.gov/cad.api" +
+      "?comet=true&dist-max=2au&date-min=now&date-max=%2B730&sort=dist&fullname=true";
+
+    fetch(url)
       .then(function (r) {
-        if (!r.ok) throw new Error("HTTP " + r.status);
+        if (!r.ok) throw new Error("JPL HTTP " + r.status);
         return r.json();
       })
       .then(function (data) {
-        cometData = data.comets || [];
+        var fields = data.fields || [];
+        cometData = (data.data || []).map(function (row) {
+          var obj = {};
+          fields.forEach(function (f, i) { obj[f] = row[i]; });
+          return obj;
+        });
         els.cometToggle.textContent = "🌠 COMÈTES";
         els.cometToggle.disabled = false;
         if (cometVisible) {
