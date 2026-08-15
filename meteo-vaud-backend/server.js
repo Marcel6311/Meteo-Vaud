@@ -346,9 +346,37 @@ async function refreshMeteorites() {
     const url = "https://data.nasa.gov/docs/legacy/meteorite_landings/Meteorite_Landings.json";
     const r = await fetch(url);
     if (!r.ok) throw new Error("NASA HTTP " + r.status);
-    const all = await r.json();
+    const json = await r.json();
+
+    // Le fichier peut etre un tableau direct OU un export Socrata (objet avec
+    // meta.view.columns + data = tableau de tableaux).
+    let rawList;
+    if (Array.isArray(json)) {
+      // Format ideal : tableau d'objets [{name, reclat, ...}, ...]
+      rawList = json;
+    } else if (json.data && Array.isArray(json.data)) {
+      if (json.data.length > 0 && Array.isArray(json.data[0])) {
+        // Format Socrata : colonnes dans meta.view.columns, rows = tableaux de valeurs
+        const cols = (json.meta && json.meta.view && json.meta.view.columns)
+          ? json.meta.view.columns.map(c => c.fieldName)
+          : [];
+        if (cols.length === 0) throw new Error("Export Socrata sans colonnes identifiables");
+        rawList = json.data.map(row => {
+          const obj = {};
+          cols.forEach((col, i) => { obj[col] = (row[i] !== null && row[i] !== undefined) ? String(row[i]) : null; });
+          return obj;
+        });
+      } else {
+        // Format objet avec cle "data" contenant tableau d'objets
+        rawList = json.data;
+      }
+    } else {
+      // Structure inconnue — log les cles pour debug
+      throw new Error("Structure JSON non reconnue, cles: " + JSON.stringify(Object.keys(json)).substring(0, 200));
+    }
+
     // Filtrer : garder uniquement les meteorites avec coordonnees valides
-    const meteorites = all.filter(d =>
+    const meteorites = rawList.filter(d =>
       d.reclat && d.reclong &&
       !(parseFloat(d.reclat) === 0 && parseFloat(d.reclong) === 0)
     );
@@ -357,7 +385,7 @@ async function refreshMeteorites() {
       meteorites,
       lastError: null
     };
-    console.log(`[refresh:meteorites] ${meteorites.length}/${all.length} meteorites avec coords (${meteoriteCache.updatedAt})`);
+    console.log(`[refresh:meteorites] ${meteorites.length}/${rawList.length} meteorites avec coords (${meteoriteCache.updatedAt})`);
   } catch (err) {
     meteoriteCache.lastError = err.message;
     console.error("[refresh:meteorites] echec :", err.message);
