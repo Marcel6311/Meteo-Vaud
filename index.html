@@ -987,6 +987,7 @@
       <button class="rain-toggle" id="aerosolToggle">💨 AÉROSOLS</button>
       <button class="rain-toggle" id="earthquakeToggle">🫨 SÉISMES</button>
       <button class="rain-toggle" id="earthquakeInfoToggle" title="Repères pratiques">ℹ️</button>
+      <button class="rain-toggle" id="meteorToggle">☄️ MÉTÉORITES</button>
       <button class="rain-toggle" id="camsToggle">🌫️ PM2.5</button>
       <button class="rain-toggle" id="windToggle">💨 VENT</button>
       <button class="rain-toggle" id="windEuropeToggle">🌀 VENT ANIMÉ EUROPE</button>
@@ -1428,6 +1429,7 @@
     earthquakeInfoToggle: document.getElementById("earthquakeInfoToggle"),
     earthquakeInfoOverlay: document.getElementById("earthquakeInfoOverlay"),
     earthquakeInfoClose: document.getElementById("earthquakeInfoClose"),
+    meteorToggle: document.getElementById("meteorToggle"),
     snowToggle: document.getElementById("snowToggle"),
     eonetToggle: document.getElementById("eonetToggle"),
     effisToggle: document.getElementById("effisToggle"),
@@ -2674,6 +2676,114 @@
   els.earthquakeInfoOverlay.addEventListener("click", function (e) {
     if (e.target === els.earthquakeInfoOverlay) {
       els.earthquakeInfoOverlay.classList.remove("open");
+    }
+  });
+
+  // -------------------------------------------------------------------
+  // Meteorites (NASA Meteorite Landings — data.nasa.gov, sans cle)
+  // -------------------------------------------------------------------
+  // Dataset statique de 45 000+ meteorites tombees depuis le 9e siecle,
+  // avec coordonnees, nom, type (recclass), masse (g) et annee.
+  // Chargement direct depuis le frontend (pas de backend necessaire).
+  // Canvas renderer pour la performance. Filtre : coordonnees valides.
+
+  var meteoriteMarkers = [];
+  var meteoriteVisible = false;
+  var meteoriteData = null; // cache — charge une seule fois
+  var meteoriteRenderer = L.canvas({ padding: 0.5, tolerance: 12 });
+
+  // Couleur par masse (grammes) — echelle log
+  function meteorColor(mass) {
+    if (mass >= 1000000) return "#9B30FF"; // violet — > 1 tonne
+    if (mass >= 10000)   return "#d53e4f"; // rouge  — > 10 kg
+    if (mass >= 1000)    return "#f46d43"; // orange — > 1 kg
+    if (mass >= 100)     return "#C98A1D"; // ambre  — > 100 g
+    return "#4FA3B5";                      // teal   — micro
+  }
+
+  // Rayon par masse
+  function meteorRadius(mass) {
+    if (mass >= 1000000) return 7;
+    if (mass >= 10000)   return 6;
+    if (mass >= 1000)    return 5;
+    if (mass >= 100)     return 4;
+    return 3;
+  }
+
+  // Formater la masse lisiblement
+  function formatMass(g) {
+    if (!g || isNaN(g)) return "inconnue";
+    if (g >= 1000000) return (g / 1000000).toFixed(2) + " t";
+    if (g >= 1000)    return (g / 1000).toFixed(2) + " kg";
+    return g.toFixed(1) + " g";
+  }
+
+  // Extraire l'annee depuis le champ "year" (ex: "1969-01-01T00:00:00.000")
+  function meteorYear(yearStr) {
+    if (!yearStr) return "—";
+    return yearStr.substring(0, 4);
+  }
+
+  function clearMeteoriteMarkers() {
+    meteoriteMarkers.forEach(function (m) { m.remove(); });
+    meteoriteMarkers = [];
+  }
+
+  function renderMeteoriteMarkers() {
+    clearMeteoriteMarkers();
+    if (!meteoriteData) return;
+    meteoriteData.forEach(function (d) {
+      var lat = parseFloat(d.reclat);
+      var lon = parseFloat(d.reclong);
+      if (isNaN(lat) || isNaN(lon) || (lat === 0 && lon === 0)) return;
+      var mass = parseFloat(d.mass);
+      var m = L.circleMarker([lat, lon], {
+        radius: meteorRadius(mass),
+        fillColor: meteorColor(mass),
+        fillOpacity: 0.82,
+        color: "#10141A",
+        weight: 0.8,
+        renderer: meteoriteRenderer
+      });
+      m.bindPopup(
+        "<div style='font-family:var(--font-mono);font-size:12px;line-height:1.7'>" +
+        "<strong style='font-size:13px;color:#fff'>" + (d.name || "—") + "</strong><br>" +
+        "<span style='color:var(--text-dim)'>Type : </span>" + (d.recclass || "—") + "<br>" +
+        "<span style='color:var(--text-dim)'>Masse : </span>" + formatMass(mass) + "<br>" +
+        "<span style='color:var(--text-dim)'>Année : </span>" + meteorYear(d.year) + "<br>" +
+        "<span style='color:var(--text-dim)'>Statut : </span>" + (d.fall || "—") +
+        "</div>",
+        { maxWidth: 240 }
+      );
+      m.addTo(map);
+      meteoriteMarkers.push(m);
+    });
+  }
+
+  function fetchMeteoritesAndRender() {
+    // Deja en cache — pas besoin de recharger (dataset statique)
+    if (meteoriteData) {
+      renderMeteoriteMarkers();
+      return;
+    }
+    fetch("https://data.nasa.gov/resource/gh4g-9sfh.json?$limit=50000", { cache: "force-cache" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        meteoriteData = data;
+        if (meteoriteVisible) renderMeteoriteMarkers();
+      })
+      .catch(function (err) {
+        console.error("[meteorites] echec :", err);
+      });
+  }
+
+  els.meteorToggle.addEventListener("click", function () {
+    meteoriteVisible = !meteoriteVisible;
+    els.meteorToggle.classList.toggle("active", meteoriteVisible);
+    if (meteoriteVisible) {
+      fetchMeteoritesAndRender();
+    } else {
+      clearMeteoriteMarkers();
     }
   });
 
