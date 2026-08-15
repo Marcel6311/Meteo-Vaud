@@ -988,6 +988,7 @@
       <button class="rain-toggle" id="earthquakeToggle">🫨 SÉISMES</button>
       <button class="rain-toggle" id="earthquakeInfoToggle" title="Repères pratiques">ℹ️</button>
       <button class="rain-toggle" id="meteorToggle">☄️ MÉTÉORITES</button>
+      <button class="rain-toggle" id="cometToggle">🌠 COMÈTES</button>
       <button class="rain-toggle" id="camsToggle">🌫️ PM2.5</button>
       <button class="rain-toggle" id="windToggle">💨 VENT</button>
       <button class="rain-toggle" id="windEuropeToggle">🌀 VENT ANIMÉ EUROPE</button>
@@ -1430,6 +1431,7 @@
     earthquakeInfoOverlay: document.getElementById("earthquakeInfoOverlay"),
     earthquakeInfoClose: document.getElementById("earthquakeInfoClose"),
     meteorToggle: document.getElementById("meteorToggle"),
+    cometToggle:  document.getElementById("cometToggle"),
     snowToggle: document.getElementById("snowToggle"),
     eonetToggle: document.getElementById("eonetToggle"),
     effisToggle: document.getElementById("effisToggle"),
@@ -2803,6 +2805,194 @@
       fetchMeteoritesAndRender();
     } else {
       clearMeteoriteMarkers();
+    }
+  });
+
+  // -------------------------------------------------------------------
+  // Cometes (JPL SBDB Close Approach Data)
+  // -------------------------------------------------------------------
+  // Panneau lateral + trajectoires Leaflet (projection coordonnees celestes).
+  // Source : JPL Small Body Database, cometes < 2 UA, 2 prochaines annees.
+
+  var cometData = null;
+  var cometVisible = false;
+  var cometMarkers = [];
+  var cometLines = [];
+  var cometPanel = null;
+
+  // Calculer la longitude ecliptique approx du Soleil pour une date donnee
+  function sunLonAtDate(isoDate) {
+    var ms = new Date(isoDate).getTime();
+    var j2000 = new Date("2000-01-01T12:00:00Z").getTime();
+    var days = (ms - j2000) / 86400000;
+    return ((280.46 + 0.9856474 * days) % 360 + 360) % 360;
+  }
+
+  // Approximer la position celeste (lat, lon Leaflet) d'une comete
+  // a partir de sa date d'approche : la comete est grossierement
+  // dans la direction anti-solaire au moment de l'approche terrestre.
+  function cometSkyPos(cdStr, index) {
+    var lon = ((sunLonAtDate(cdStr) + 180 + index * 20) % 360) - 180;
+    var lat = (index % 3 - 1) * 18; // etaler sur -18 / 0 / +18 deg
+    return [lat, lon];
+  }
+
+  // Position d'entree (depuis "l'espace profond"), 60 deg plus loin
+  function cometEntryPos(cdStr, index) {
+    var lon = ((sunLonAtDate(cdStr) + 180 + index * 20 + 60) % 360) - 180;
+    var lat = (index % 3 - 1) * 18;
+    return [lat, lon];
+  }
+
+  // Formater la distance AU → lisible
+  function formatAU(au) {
+    var v = parseFloat(au);
+    if (isNaN(v)) return "—";
+    var ld = (v * 389.17).toFixed(1); // 1 AU = 389.17 LD
+    return v.toFixed(4) + " UA (" + ld + " LD)";
+  }
+
+  // Jours avant l'approche
+  function daysUntil(cdStr) {
+    var ms = new Date(cdStr.replace(" ", "T") + ":00Z").getTime() - Date.now();
+    var d = Math.round(ms / 86400000);
+    if (d < 0) return "Passée";
+    if (d === 0) return "Aujourd'hui";
+    return "dans " + d + " j";
+  }
+
+  // Creer ou mettre a jour le panneau cometes
+  function renderCometPanel(comets) {
+    if (cometPanel) { cometPanel.remove(); cometPanel = null; }
+    if (!comets || comets.length === 0) return;
+
+    var panel = document.createElement("div");
+    panel.id = "cometPanel";
+    panel.style.cssText = "position:fixed;top:70px;right:10px;width:320px;max-height:70vh;" +
+      "overflow-y:auto;background:var(--bg-panel);border:1px solid var(--border);" +
+      "border-radius:8px;padding:12px;z-index:1200;font-family:var(--font-mono);font-size:12px;";
+
+    var html = "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:10px'>" +
+      "<strong style='color:var(--accent);font-size:13px'>🌠 COMÈTES — Approches < 2 UA</strong>" +
+      "<button onclick='document.getElementById(\"cometPanel\").remove()' " +
+      "style='background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:16px'>×</button>" +
+      "</div>";
+
+    comets.forEach(function (c, i) {
+      var name = c.fullname || c.des || "—";
+      var cd = c.cd || "—";
+      var dist = formatAU(c.dist);
+      var vrel = c.v_rel ? parseFloat(c.v_rel).toFixed(2) + " km/s" : "—";
+      var when = daysUntil(cd);
+
+      html += "<div style='border-top:1px solid var(--border);padding:8px 0;'>" +
+        "<div style='color:#fff;font-weight:bold;margin-bottom:4px'>" + name + "</div>" +
+        "<div style='color:var(--text-dim)'>Approche : <span style='color:var(--accent)'>" + cd + "</span>" +
+        " <span style='color:#4FA3B5'>(" + when + ")</span></div>" +
+        "<div style='color:var(--text-dim)'>Distance : " + dist + "</div>" +
+        "<div style='color:var(--text-dim)'>Vitesse rel. : " + vrel + "</div>" +
+        "</div>";
+    });
+
+    panel.innerHTML = html;
+    document.body.appendChild(panel);
+    cometPanel = panel;
+  }
+
+  // Tracer les marqueurs et trajectoires sur la carte
+  function renderCometOnMap(comets) {
+    cometMarkers.forEach(function (m) { m.remove(); });
+    cometLines.forEach(function (l) { l.remove(); });
+    cometMarkers = [];
+    cometLines = [];
+
+    comets.forEach(function (c, i) {
+      var name = (c.fullname || c.des || "?").replace(/^(\d+P\/|C\/)/, "");
+      var cd = c.cd || new Date().toISOString();
+      var close = cometSkyPos(cd, i);
+      var entry = cometEntryPos(cd, i);
+
+      // Ligne pointillee de l'entree vers l'approche
+      var line = L.polyline([entry, close], {
+        color: "#9B30FF",
+        weight: 1.5,
+        dashArray: "6 5",
+        opacity: 0.7
+      }).addTo(map);
+      cometLines.push(line);
+
+      // Marqueur comete
+      var icon = L.divIcon({
+        html: "<div style='font-size:18px;filter:drop-shadow(0 0 4px #9B30FF);'>🌠</div>",
+        className: "",
+        iconSize: [22, 22],
+        iconAnchor: [11, 11]
+      });
+      var marker = L.marker(close, { icon: icon })
+        .bindPopup(
+          "<div style='font-family:var(--font-mono);font-size:12px;line-height:1.8'>" +
+          "<strong style='color:#fff;font-size:13px'>" + (c.fullname || c.des || "—") + "</strong><br>" +
+          "<span style='color:var(--text-dim)'>Approche : </span>" + (c.cd || "—") + "<br>" +
+          "<span style='color:var(--text-dim)'>Distance : </span>" + formatAU(c.dist) + "<br>" +
+          "<span style='color:var(--text-dim)'>Vitesse : </span>" + (c.v_rel ? parseFloat(c.v_rel).toFixed(2) + " km/s" : "—") + "<br>" +
+          "<span style='color:var(--text-dim)'>Délai : </span>" + daysUntil(c.cd || "") +
+          "</div>",
+          { maxWidth: 280 }
+        )
+        .addTo(map);
+      cometMarkers.push(marker);
+    });
+  }
+
+  function clearCometLayer() {
+    cometMarkers.forEach(function (m) { m.remove(); });
+    cometLines.forEach(function (l) { l.remove(); });
+    cometMarkers = [];
+    cometLines = [];
+    if (cometPanel) { cometPanel.remove(); cometPanel = null; }
+  }
+
+  function fetchCometsAndRender() {
+    if (cometData) {
+      renderCometPanel(cometData);
+      renderCometOnMap(cometData);
+      return;
+    }
+    els.cometToggle.textContent = "⏳ COMÈTES…";
+    els.cometToggle.disabled = true;
+
+    fetch(API_BASE + "/comets")
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        cometData = data.comets || [];
+        els.cometToggle.textContent = "🌠 COMÈTES";
+        els.cometToggle.disabled = false;
+        if (cometVisible) {
+          renderCometPanel(cometData);
+          renderCometOnMap(cometData);
+        }
+      })
+      .catch(function (err) {
+        console.error("[comets] echec :", err);
+        els.cometToggle.textContent = "⚠️ Erreur";
+        els.cometToggle.disabled = false;
+        els.cometToggle.classList.remove("active");
+        cometVisible = false;
+        setTimeout(function () { els.cometToggle.textContent = "🌠 COMÈTES"; }, 3000);
+      });
+  }
+
+  els.cometToggle.addEventListener("click", function () {
+    if (els.cometToggle.disabled) return;
+    cometVisible = !cometVisible;
+    els.cometToggle.classList.toggle("active", cometVisible);
+    if (cometVisible) {
+      fetchCometsAndRender();
+    } else {
+      clearCometLayer();
     }
   });
 
