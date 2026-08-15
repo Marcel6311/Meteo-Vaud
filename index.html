@@ -3225,10 +3225,11 @@
       });
   }
 
-  // Suivi automatique de la progression, sans jamais rien declencher soi-meme
-  // (endpoint /wind-europe/status = consultation seule). Verifie toutes les
-  // 15s tant qu'une construction est en cours, s'arrete d'elle-meme sinon.
-  var windEuropeStatusTimer = null;
+  // Suivi automatique de la progression.
+  // Polling permanent toutes les 20s (leger) : detecte automatiquement quand
+  // une construction demarre depuis n'importe quel onglet ou appareil.
+  // Passe a 8s des que inProgress=true pour un affichage fluide.
+  var windEuropeStatusFast = false;
 
   function checkWindEuropeStatus() {
     fetch(API_BASE + "/wind-europe/status", { cache: "no-store" })
@@ -3238,32 +3239,42 @@
         if (!el) return;
 
         if (!status.inProgress) {
-          el.textContent = "";
-          if (windEuropeStatusTimer) {
-            clearInterval(windEuropeStatusTimer);
-            windEuropeStatusTimer = null;
+          // Construction terminee : effacer l'indicateur et repasser en mode lent
+          if (windEuropeStatusFast) {
+            windEuropeStatusFast = false;
+            // Si la grille vient de se terminer, la charger automatiquement
+            if (windEuropeVisible && !windEuropeData) fetchWindEurope();
           }
+          el.textContent = "";
           return;
         }
 
+        // Construction en cours : afficher progression
         var mins = Math.floor(status.estimatedRemainingSeconds / 60);
         var secs = status.estimatedRemainingSeconds % 60;
         var etaStr = mins > 0 ? mins + " min " + secs + "s" : secs + "s";
         el.textContent = "⏳ " + status.percent + "% (~" + etaStr + " restantes)";
 
-        // Demarre le suivi periodique si pas deja actif
-        if (!windEuropeStatusTimer) {
-          windEuropeStatusTimer = setInterval(checkWindEuropeStatus, 15000);
-        }
+        // Passer en mode rapide si ce n'est pas encore fait
+        windEuropeStatusFast = true;
       })
       .catch(function (err) {
         console.error("[vent europe status] echec :", err);
       });
   }
 
-  // Verifie l'etat au chargement de la page : si une construction etait deja
-  // en cours (lancee depuis un autre appareil par exemple), on la voit direct.
+  // Polling permanent auto-adaptatif via setTimeout recursif :
+  // 8s quand la construction est active (affichage fluide), 20s sinon (leger).
+  function scheduleWindStatusCheck() {
+    setTimeout(function () {
+      checkWindEuropeStatus();
+      scheduleWindStatusCheck(); // replanifie avec le delai adapte a l'etat courant
+    }, windEuropeStatusFast ? 8000 : 20000);
+  }
+
+  // Premier check immediat + lancement de la boucle
   checkWindEuropeStatus();
+  scheduleWindStatusCheck();
 
   els.windEuropeToggle.addEventListener("click", function () {
     windEuropeVisible = !windEuropeVisible;
