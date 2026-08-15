@@ -2776,7 +2776,7 @@
         return r.json();
       })
       .then(function (data) {
-        meteoriteData = data;
+        meteoriteData = data.meteorites || data; // compatibilite backend ({meteorites:[...]}) ou tableau brut
         els.meteorToggle.textContent = "☄️ MÉTÉORITES";
         els.meteorToggle.disabled = false;
         if (meteoriteVisible) renderMeteoriteMarkers();
