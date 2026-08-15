@@ -94,6 +94,7 @@ let ensoCache = { updatedAt: null, enso: null, lastError: null };
 let spaceWeatherCache = { updatedAt: null, spaceWeather: null, lastError: null };
 let pollenCache = { updatedAt: null, pollen: null, lastError: null };
 let globalTempCache = { updatedAt: null, globalTemp: null, lastError: null };
+let meteoriteCache = { updatedAt: null, meteorites: [], lastError: null };
 
 function pickScope(req) {
   const scope = (req.query.scope || "vd").toLowerCase();
@@ -335,6 +336,27 @@ async function refreshGlobalTemp() {
   } catch (err) {
     globalTempCache.lastError = err.message;
     console.error("[refresh:globaltemp] echec :", err.message);
+  }
+}
+
+async function refreshMeteorites() {
+  try {
+    const url = "https://data.nasa.gov/resource/gh4g-9sfh.json" +
+                "?$select=name,mass,year,reclat,reclong,recclass,fall" +
+                "&$where=reclat%20IS%20NOT%20NULL" +
+                "&$limit=50000";
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("NASA HTTP " + r.status);
+    const meteorites = await r.json();
+    meteoriteCache = {
+      updatedAt: new Date().toISOString(),
+      meteorites,
+      lastError: null
+    };
+    console.log(`[refresh:meteorites] ${meteorites.length} meteorites recuperees (${meteoriteCache.updatedAt})`);
+  } catch (err) {
+    meteoriteCache.lastError = err.message;
+    console.error("[refresh:meteorites] echec :", err.message);
   }
 }
 
@@ -617,6 +639,19 @@ app.get("/globaltemp", (req, res) => {
   });
 });
 
+// GET /meteorites - dataset NASA Meteorite Landings (45 000+ meteorites, coordonnees, masse, type)
+// Rafraichi toutes les 24h (dataset quasi-statique).
+app.get("/meteorites", (req, res) => {
+  res.json({
+    source: "NASA Meteorite Landings (data.nasa.gov)",
+    licence: "NASA Open Data",
+    updatedAt: meteoriteCache.updatedAt,
+    lastError: meteoriteCache.lastError,
+    count: meteoriteCache.meteorites.length,
+    meteorites: meteoriteCache.meteorites
+  });
+});
+
 // GET /epic - photos NASA EPIC/DSCOVR de la Terre entiere (proxy backend car l'API NASA ne supporte pas CORS)
 app.get("/epic", (req, res) => {
   res.json({
@@ -687,6 +722,7 @@ var httpServer = app.listen(PORT, async () => {
   await refreshSpaceWeather();
   await refreshPollen();
   await refreshGlobalTemp();
+  await refreshMeteorites();
   // Vent Europe : PAS de refresh automatique au demarrage. Marcel controle
   // lui-meme quand la grille se (re)construit, via GET /wind-europe/refresh.
   setInterval(refreshAll, DATA_REFRESH_MS);
@@ -699,6 +735,7 @@ var httpServer = app.listen(PORT, async () => {
   setInterval(refreshSpaceWeather, 3 * 60 * 60 * 1000); // 3h : cadence native du Kp
   setInterval(refreshPollen, 60 * 60 * 1000); // 1h : cadence native de la donnee pollen
   setInterval(refreshGlobalTemp, 24 * 60 * 60 * 1000); // 24h : le NASA ne publie qu'1x/mois environ
+  setInterval(refreshMeteorites, 24 * 60 * 60 * 1000); // 24h : dataset quasi-statique
   // Pas de setInterval automatique pour le vent Europe : uniquement sur demande (voir /wind-europe/refresh)
   setInterval(refreshHeatwave, 3 * 60 * 60 * 1000); // 3h : la prevision OWM ne change pas assez vite pour justifier plus frequent
   setInterval(refreshEpic, 60 * 60 * 1000); // 1h : cadence proche de celle des vraies prises de vue EPIC
