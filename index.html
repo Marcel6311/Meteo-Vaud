@@ -2928,13 +2928,20 @@
       var close = cometSkyPos(cd, i);
       var entry = cometEntryPos(cd, i);
 
-      // Ligne pointillee de l'entree vers l'approche
-      var line = L.polyline([entry, close], {
+      // Trajectoire : halo large semi-transparent + ligne pointillee fine par-dessus
+      var lineGlow = L.polyline([entry, close], {
         color: "#9B30FF",
-        weight: 1.5,
-        dashArray: "6 5",
-        opacity: 0.7
+        weight: 8,
+        dashArray: null,
+        opacity: 0.18
       }).addTo(map);
+      var line = L.polyline([entry, close], {
+        color: "#BF7FFF",
+        weight: 2.5,
+        dashArray: "10 6",
+        opacity: 0.9
+      }).addTo(map);
+      cometLines.push(lineGlow);
       cometLines.push(line);
 
       // Marqueur comete
