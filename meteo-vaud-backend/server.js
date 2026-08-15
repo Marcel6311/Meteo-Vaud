@@ -341,19 +341,23 @@ async function refreshGlobalTemp() {
 
 async function refreshMeteorites() {
   try {
-    const url = "https://data.nasa.gov/resource/gh4g-9sfh.json" +
-                "?$select=name,mass,year,reclat,reclong,recclass,fall" +
-                "&$where=reclat%20IS%20NOT%20NULL" +
-                "&$limit=50000";
+    // L'ancien endpoint Socrata (gh4g-9sfh) retourne 404 depuis mai 2025.
+    // NASA a migré vers un fichier JSON statique legacy.
+    const url = "https://data.nasa.gov/docs/legacy/meteorite_landings/Meteorite_Landings.json";
     const r = await fetch(url);
     if (!r.ok) throw new Error("NASA HTTP " + r.status);
-    const meteorites = await r.json();
+    const all = await r.json();
+    // Filtrer : garder uniquement les meteorites avec coordonnees valides
+    const meteorites = all.filter(d =>
+      d.reclat && d.reclong &&
+      !(parseFloat(d.reclat) === 0 && parseFloat(d.reclong) === 0)
+    );
     meteoriteCache = {
       updatedAt: new Date().toISOString(),
       meteorites,
       lastError: null
     };
-    console.log(`[refresh:meteorites] ${meteorites.length} meteorites recuperees (${meteoriteCache.updatedAt})`);
+    console.log(`[refresh:meteorites] ${meteorites.length}/${all.length} meteorites avec coords (${meteoriteCache.updatedAt})`);
   } catch (err) {
     meteoriteCache.lastError = err.message;
     console.error("[refresh:meteorites] echec :", err.message);
