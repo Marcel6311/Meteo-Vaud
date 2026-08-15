@@ -2731,6 +2731,99 @@
     meteoriteMarkers = [];
   }
 
+  // --- Recherche de météorite par nom ---
+  var meteoriteSearchMarker = null;
+
+  function clearMeteoriteSearch() {
+    if (meteoriteSearchMarker) { meteoriteSearchMarker.remove(); meteoriteSearchMarker = null; }
+  }
+
+  function searchMeteorite(query) {
+    clearMeteoriteSearch();
+    var inp = document.getElementById("meteorSearchInput");
+    if (!query || !meteoriteData) return;
+    var q = query.trim().toLowerCase();
+    if (!q) return;
+
+    // Chercher le meilleur match : exact en priorité, puis sous-chaine
+    var exact = null, partial = null;
+    for (var i = 0; i < meteoriteData.length; i++) {
+      var d = meteoriteData[i];
+      if (!d.name) continue;
+      var lat = parseFloat(d.reclat), lon = parseFloat(d.reclong);
+      if (isNaN(lat) || isNaN(lon)) continue;
+      var nameLow = d.name.toLowerCase();
+      if (nameLow === q && !exact) exact = d;
+      if (nameLow.indexOf(q) !== -1 && !partial) partial = d;
+      if (exact) break;
+    }
+    var found = exact || partial;
+
+    if (!found) {
+      if (inp) { inp.style.borderColor = "#d53e4f"; setTimeout(function () { if (inp) inp.style.borderColor = ""; }, 1500); }
+      return;
+    }
+    if (inp) inp.style.borderColor = "#4FA3B5";
+
+    var lat = parseFloat(found.reclat), lon = parseFloat(found.reclong);
+    var mass = parseFloat(found.mass);
+    map.setView([lat, lon], 6, { animate: true });
+
+    // Halo de surbrillance
+    var halo = L.circleMarker([lat, lon], {
+      radius: 18, fillColor: "#FFD700", fillOpacity: 0.18,
+      color: "#FFD700", weight: 2.5, opacity: 0.9
+    }).addTo(map);
+
+    // Marqueur central avec popup
+    var pin = L.circleMarker([lat, lon], {
+      radius: 7, fillColor: "#FFD700", fillOpacity: 0.95,
+      color: "#10141A", weight: 1.5
+    }).bindPopup(
+      "<div style='font-family:var(--font-mono);font-size:12px;line-height:1.8'>" +
+      "<strong style='font-size:13px;color:#FFD700'>🔍 " + (found.name || "—") + "</strong><br>" +
+      "<span style='color:var(--text-dim)'>Type : </span>" + (found.recclass || "—") + "<br>" +
+      "<span style='color:var(--text-dim)'>Masse : </span>" + formatMass(mass) + "<br>" +
+      "<span style='color:var(--text-dim)'>Année : </span>" + meteorYear(found.year) + "<br>" +
+      "<span style='color:var(--text-dim)'>Statut : </span>" + (found.fall === "Fell" ? "Observée" : found.fall === "Found" ? "Trouvée" : (found.fall || "—")) + "<br>" +
+      "<span style='color:var(--text-dim)'>Coords : </span>" + lat.toFixed(4) + "° / " + lon.toFixed(4) + "°" +
+      "</div>", { maxWidth: 260 }
+    ).addTo(map).openPopup();
+
+    // Grouper les deux couches pour pouvoir les retirer ensemble
+    meteoriteSearchMarker = { remove: function () { halo.remove(); pin.remove(); } };
+  }
+
+  function showMeteoriteSearch() {
+    if (document.getElementById("meteorSearchBar")) return;
+    var bar = document.createElement("div");
+    bar.id = "meteorSearchBar";
+    bar.style.cssText = "position:fixed;bottom:38px;left:50%;transform:translateX(-50%);" +
+      "display:flex;gap:6px;align-items:center;z-index:1100;" +
+      "background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;padding:7px 10px;";
+    bar.innerHTML =
+      "<span style='color:var(--accent);font-size:11px;font-family:var(--font-mono);white-space:nowrap'>☄️ Recherche :</span>" +
+      "<input id='meteorSearchInput' type='text' placeholder='Nom de la météorite…' " +
+      "style='width:200px;background:var(--bg-dark);border:1px solid var(--border);color:#fff;" +
+      "border-radius:4px;padding:5px 8px;font-family:var(--font-mono);font-size:12px;outline:none'>" +
+      "<button id='meteorSearchBtn' style='background:var(--accent);border:none;color:#000;" +
+      "border-radius:4px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:var(--font-mono)'>🔍</button>";
+    document.body.appendChild(bar);
+    var inp = document.getElementById("meteorSearchInput");
+    document.getElementById("meteorSearchBtn").addEventListener("click", function () {
+      searchMeteorite(inp.value);
+    });
+    inp.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") searchMeteorite(this.value);
+    });
+  }
+
+  function hideMeteoriteSearch() {
+    var bar = document.getElementById("meteorSearchBar");
+    if (bar) bar.remove();
+    clearMeteoriteSearch();
+  }
+
   function renderMeteoriteMarkers() {
     clearMeteoriteMarkers();
     if (!meteoriteData) return;
@@ -2803,8 +2896,10 @@
     els.meteorToggle.classList.toggle("active", meteoriteVisible);
     if (meteoriteVisible) {
       fetchMeteoritesAndRender();
+      showMeteoriteSearch();
     } else {
       clearMeteoriteMarkers();
+      hideMeteoriteSearch();
     }
   });
 
