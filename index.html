@@ -2766,18 +2766,37 @@
       renderMeteoriteMarkers();
       return;
     }
-    fetch("https://data.nasa.gov/resource/gh4g-9sfh.json?$limit=50000", { cache: "force-cache" })
-      .then(function (r) { return r.json(); })
+    // Indicateur de chargement sur le bouton
+    els.meteorToggle.textContent = "⏳ MÉTÉORITES…";
+    els.meteorToggle.disabled = true;
+
+    fetch(API_BASE + "/meteorites")
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
       .then(function (data) {
         meteoriteData = data;
+        els.meteorToggle.textContent = "☄️ MÉTÉORITES";
+        els.meteorToggle.disabled = false;
         if (meteoriteVisible) renderMeteoriteMarkers();
       })
       .catch(function (err) {
         console.error("[meteorites] echec :", err);
+        els.meteorToggle.textContent = "☄️ MÉTÉORITES";
+        els.meteorToggle.disabled = false;
+        els.meteorToggle.classList.remove("active");
+        meteoriteVisible = false;
+        // Message bref sur le bouton
+        els.meteorToggle.textContent = "⚠️ Erreur";
+        setTimeout(function () {
+          els.meteorToggle.textContent = "☄️ MÉTÉORITES";
+        }, 3000);
       });
   }
 
   els.meteorToggle.addEventListener("click", function () {
+    if (els.meteorToggle.disabled) return; // chargement en cours
     meteoriteVisible = !meteoriteVisible;
     els.meteorToggle.classList.toggle("active", meteoriteVisible);
     if (meteoriteVisible) {
