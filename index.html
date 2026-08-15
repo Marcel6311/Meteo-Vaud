@@ -2820,9 +2820,25 @@
   var cometLines = [];
   var cometPanel = null;
 
+  // Convertir le format de date JPL ("2024-Jan-01 12:00") en Date JS.
+  // new Date() ne parse pas ce format de façon fiable sur tous les navigateurs.
+  var JPL_MONTHS = {Jan:"01",Feb:"02",Mar:"03",Apr:"04",May:"05",Jun:"06",
+                    Jul:"07",Aug:"08",Sep:"09",Oct:"10",Nov:"11",Dec:"12"};
+  function parseJplDate(cdStr) {
+    if (!cdStr) return new Date(NaN);
+    var m = String(cdStr).match(/^(\d{4})-([A-Za-z]{3})-(\d{2})(?:\s+(\d{2}:\d{2}))?/);
+    if (m) {
+      var mon = JPL_MONTHS[m[2]] || "01";
+      var time = m[4] ? m[4] + ":00" : "00:00:00";
+      return new Date(m[1] + "-" + mon + "-" + m[3] + "T" + time + "Z");
+    }
+    return new Date(cdStr); // fallback ISO
+  }
+
   // Calculer la longitude ecliptique approx du Soleil pour une date donnee
-  function sunLonAtDate(isoDate) {
-    var ms = new Date(isoDate).getTime();
+  function sunLonAtDate(cdStr) {
+    var ms = parseJplDate(cdStr).getTime();
+    if (isNaN(ms)) return 0; // fallback : on place a lon 0 si date invalide
     var j2000 = new Date("2000-01-01T12:00:00Z").getTime();
     var days = (ms - j2000) / 86400000;
     return ((280.46 + 0.9856474 * days) % 360 + 360) % 360;
@@ -2854,7 +2870,7 @@
 
   // Jours avant l'approche
   function daysUntil(cdStr) {
-    var ms = new Date(cdStr.replace(" ", "T") + ":00Z").getTime() - Date.now();
+    var ms = parseJplDate(cdStr).getTime() - Date.now();
     var d = Math.round(ms / 86400000);
     if (d < 0) return "Passée";
     if (d === 0) return "Aujourd'hui";
