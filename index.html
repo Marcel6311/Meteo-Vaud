@@ -1316,7 +1316,12 @@
 
     <!-- APOD -->
     <div style="padding: 22px; border-bottom: 1px solid var(--hairline);">
-      <h3 style="margin: 0 0 6px 0; color: var(--amber); font-size: 14px;">🌌 Photo astronomique du jour</h3>
+      <h3 style="margin: 0 0 6px 0; color: var(--amber); font-size: 14px; display:flex; align-items:center; gap:8px;">
+        🌌 Photo astronomique du jour
+        <button id="apodRefreshBtn" title="Rafraîchir l'image du jour"
+          style="background:none;border:1px solid var(--border);color:var(--text-dim);border-radius:4px;
+                 padding:1px 6px;cursor:pointer;font-size:12px;line-height:1.6;">🔄</button>
+      </h3>
       <div id="apodTitle" style="font-weight: bold; font-size: 15px; margin-bottom: 8px;">Chargement...</div>
       <div id="apodMedia" style="text-align: center; margin-bottom: 10px;"></div>
       <div id="apodExplanation" style="font-size: 12px; color: var(--text-dim); line-height: 1.5;"></div>
@@ -4256,6 +4261,7 @@
   // -------------------------------------------------------------------
 
   var astroLoaded = false;
+  var apodLoadedDate = null; // date ISO "YYYY-MM-DD" du dernier chargement APOD
 
   // -------------------------------------------------------------------
   // Lune & Soleil — calculs astronomiques standards, aucune API necessaire
@@ -4513,17 +4519,16 @@
       });
   }
 
-  function loadAstro() {
-    astroLoaded = true;
-    renderMoonSunPanel(); // calcule localement, aucun appel reseau necessaire
-    fetchAndRenderSpaceWeather();
-
-    // APOD
+  function fetchApodPanel() {
+    document.getElementById("apodTitle").textContent = "Chargement…";
+    var btn = document.getElementById("apodRefreshBtn");
+    if (btn) btn.disabled = true;
     fetch(API_BASE + "/apod", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (data) {
         var apod = data.apod;
         if (!apod) return;
+        apodLoadedDate = apod.date; // memoiser la date de l'image chargee
         document.getElementById("apodTitle").textContent = apod.title;
         var mediaDiv = document.getElementById("apodMedia");
         if (apod.media_type === "video") {
@@ -4536,7 +4541,18 @@
       })
       .catch(function () {
         document.getElementById("apodTitle").textContent = "Erreur de chargement";
+      })
+      .finally(function () {
+        var btn = document.getElementById("apodRefreshBtn");
+        if (btn) btn.disabled = false;
       });
+  }
+
+  function loadAstro() {
+    astroLoaded = true;
+    renderMoonSunPanel(); // calcule localement, aucun appel reseau necessaire
+    fetchAndRenderSpaceWeather();
+    fetchApodPanel();
 
     // NEO
     fetch(API_BASE + "/neo", { cache: "no-store" })
@@ -4813,7 +4829,20 @@
 
   els.astroToggle.addEventListener("click", function () {
     els.astroOverlay.classList.add("open");
-    if (!astroLoaded) loadAstro();
+    if (!astroLoaded) {
+      loadAstro();
+    } else {
+      // Verifier si le jour a change depuis le dernier chargement APOD
+      var today = new Date().toISOString().slice(0, 10);
+      if (apodLoadedDate && apodLoadedDate !== today) {
+        fetchApodPanel(); // nouveau jour : recharger l'image silencieusement
+      }
+    }
+  });
+
+  // Bouton de rafraichissement manuel de l'APOD
+  document.getElementById("apodRefreshBtn").addEventListener("click", function () {
+    fetchApodPanel();
   });
 
   els.astroClose.addEventListener("click", function () {
