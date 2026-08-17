@@ -1364,6 +1364,12 @@
         </div>
         <div id="jwstAutocomplete" style="display:none; position:absolute; top:42px; left:0; right:56px; background:#1a1f2a; border:1px solid var(--hairline); border-radius:6px; max-height:220px; overflow-y:auto; z-index:10;"></div>
       </div>
+      <div id="jwstSearchNotice" style="display:none; margin-bottom:8px; font-size:11px; color:var(--text-dim);">
+        Résultats de la NASA Image Library.
+        <button id="jwstBackToGallery" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px;text-decoration:underline;padding:0;margin-left:4px;">
+          ← Retour aux 100 images phares ESA Webb
+        </button>
+      </div>
       <div id="jwstGallery" style="font-size: 12px;">Chargement...</div>
     </div>
 
@@ -4599,19 +4605,35 @@
         document.getElementById("neoList").innerHTML = "<em>Erreur de chargement des données NEO.</em>";
       });
 
-    // JWST Gallery
-    fetch(API_BASE + "/jwst", { cache: "no-store" })
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        if (!data.images || data.images.length === 0) {
-          document.getElementById("jwstGallery").innerHTML = "<em>Aucune image disponible.</em>";
-          return;
-        }
-        renderJwstGallery(data.images);
-      })
-      .catch(function () {
-        document.getElementById("jwstGallery").innerHTML = "<em>Erreur de chargement des images JWST.</em>";
-      });
+    // JWST Gallery — 100 images curateees ESA Webb
+    var jwstCuratedImages = null;
+
+    function loadJwstCuratedGallery() {
+      var notice = document.getElementById("jwstSearchNotice");
+      if (notice) notice.style.display = "none";
+      document.getElementById("jwstSearch").value = "";
+      if (jwstCuratedImages) { renderJwstGallery(jwstCuratedImages); return; }
+      document.getElementById("jwstGallery").innerHTML = "<em>Chargement…</em>";
+      fetch(API_BASE + "/jwst", { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!data.images || data.images.length === 0) {
+            document.getElementById("jwstGallery").innerHTML = "<em>Aucune image disponible.</em>";
+            return;
+          }
+          jwstCuratedImages = data.images;
+          renderJwstGallery(jwstCuratedImages);
+        })
+        .catch(function () {
+          document.getElementById("jwstGallery").innerHTML = "<em>Erreur de chargement des images JWST.</em>";
+        });
+    }
+
+    loadJwstCuratedGallery();
+
+    document.getElementById("jwstBackToGallery").addEventListener("click", function () {
+      loadJwstCuratedGallery();
+    });
 
     // Éclipses — données prévisibles, pas besoin d'API
     // Types corriges (2028-2029) et horaires locaux Lausanne (CET/CEST) ajoutes le 01.08
@@ -4698,8 +4720,10 @@
 
   function searchJwstImages(query) {
     var gallery = document.getElementById("jwstGallery");
+    var notice = document.getElementById("jwstSearchNotice");
+    if (notice) notice.style.display = "block";
     gallery.innerHTML = '<em>Recherche de "' + query + '"…</em>';
-    var url = "https://images-api.nasa.gov/search?q=" + encodeURIComponent(query) + "&media_type=image&page_size=20";
+    var url = "https://images-api.nasa.gov/search?q=" + encodeURIComponent(query) + "&media_type=image&page_size=100";
     fetch(url)
       .then(function (r) { return r.json(); })
       .then(function (data) {
