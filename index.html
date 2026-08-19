@@ -4557,7 +4557,7 @@
         } else {
           mediaDiv.innerHTML = '<img src="' + apod.url + '" alt="' + apod.title + '" style="max-width:100%;border-radius:8px;cursor:pointer;" onclick="window.open(\'' + (apod.hdurl || apod.url) + '\',\'_blank\')">';
         }
-        document.getElementById("apodExplanation").textContent = apod.explanation;
+        document.getElementById("apodExplanation").textContent = apod.explanation_fr || apod.explanation;
         document.getElementById("apodCopyright").textContent = apod.copyright ? "© " + apod.copyright + " · " + apod.date : apod.date;
       })
       .catch(function () {
