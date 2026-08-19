@@ -205,15 +205,36 @@ async function refreshFirms() {
   }
 }
 
+async function translateToFrench(text) {
+  try {
+    const url = "https://api.mymemory.translated.net/get?q=" +
+      encodeURIComponent(text) +
+      "&langpair=en|fr&de=roseblanche20%40gmail.com";
+    const r = await fetch(url);
+    const data = await r.json();
+    if (data.responseStatus === 200 && data.responseData && data.responseData.translatedText) {
+      return data.responseData.translatedText;
+    }
+  } catch (e) {
+    console.warn("[traduction] echec MyMemory :", e.message);
+  }
+  return null;
+}
+
 async function refreshApod() {
   try {
     const apod = await fetchApod();
+    // Traduire l'explication en francais via MyMemory (gratuit, quota 10 000 mots/j avec email)
+    if (apod && apod.explanation) {
+      const fr = await translateToFrench(apod.explanation);
+      if (fr) apod.explanation_fr = fr;
+    }
     apodCache = {
       updatedAt: new Date().toISOString(),
       apod,
       lastError: null
     };
-    console.log(`[refresh:apod] "${apod.title}" (${apodCache.updatedAt})`);
+    console.log(`[refresh:apod] "${apod.title}" — traduction: ${apod.explanation_fr ? "OK" : "indispo"} (${apodCache.updatedAt})`);
   } catch (err) {
     apodCache.lastError = err.message;
     console.error("[refresh:apod] echec :", err.message);
