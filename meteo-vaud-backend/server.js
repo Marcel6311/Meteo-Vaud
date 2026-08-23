@@ -223,7 +223,12 @@ async function translateToFrench(text) {
 
 async function refreshApod() {
   try {
-    const apod = await fetchApod();
+    // Appel direct avec thumbs=true pour obtenir thumbnail_url sur les APODs video
+    const key = process.env.NASA_API_KEY || "DEMO_KEY";
+    const apodUrl = `https://api.nasa.gov/planetary/apod?api_key=${key}&thumbs=true`;
+    const apodRes = await fetch(apodUrl);
+    if (!apodRes.ok) throw new Error("NASA APOD HTTP " + apodRes.status);
+    const apod = await apodRes.json();
     // Traduire l'explication en francais via MyMemory (gratuit, quota 10 000 mots/j avec email)
     if (apod && apod.explanation) {
       const fr = await translateToFrench(apod.explanation);
@@ -234,7 +239,7 @@ async function refreshApod() {
       apod,
       lastError: null
     };
-    console.log(`[refresh:apod] "${apod.title}" — traduction: ${apod.explanation_fr ? "OK" : "indispo"} (${apodCache.updatedAt})`);
+    console.log(`[refresh:apod] "${apod.title}" type:${apod.media_type}${apod.thumbnail_url ? " (miniature OK)" : ""} — traduction: ${apod.explanation_fr ? "OK" : "indispo"} (${apodCache.updatedAt})`);
   } catch (err) {
     apodCache.lastError = err.message;
     console.error("[refresh:apod] echec :", err.message);
