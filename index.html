@@ -4425,11 +4425,13 @@
         var fetchedStr = data.updatedAt
           ? new Date(data.updatedAt).toLocaleString("fr-CH", { dateStyle: "medium", timeStyle: "short" })
           : "inconnue";
-        el.title = "Source : NOAA/CPC — SST hebdomadaire Niño 3.4\n" +
-          "Semaine du : " + e.period + "\n" +
+        var srcLabel = e.source === "NOAA hebdo"
+          ? "NOAA/CPC — SST hebdomadaire Niño 3.4 (délai max 7 jours)"
+          : "NOAA/CPC — ONI mensuel (fallback)";
+        el.title = "Source : " + srcLabel + "\n" +
+          "Période : " + e.period + "\n" +
           "Anomalie SST Niño 3.4 : " + anomStr + "\n" +
-          "Récupéré le : " + fetchedStr + "\n" +
-          "Mis à jour chaque semaine par la NOAA (délai max 7 jours)";
+          "Récupéré le : " + fetchedStr;
       })
       .catch(function (err) {
         console.error("[enso] echec chargement :", err);
