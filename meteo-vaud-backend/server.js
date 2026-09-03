@@ -306,53 +306,78 @@ async function refreshEarthquakes() {
   }
 }
 
+// Convertit une anomalie Nino3.4 en phase + intensite
+function ensoPhase(anom) {
+  const abs = Math.abs(anom);
+  let phase, strength;
+  if (anom >= 0.5) {
+    phase = "El Niño";
+    strength = abs >= 2.0 ? "Exceptionnel" : abs >= 1.5 ? "Fort" : abs >= 1.0 ? "Modéré" : "Faible";
+  } else if (anom <= -0.5) {
+    phase = "La Niña";
+    strength = abs >= 2.0 ? "Exceptionnel" : abs >= 1.5 ? "Fort" : abs >= 1.0 ? "Modéré" : "Faible";
+  } else {
+    phase = "Neutre";
+    strength = null;
+  }
+  return { phase, strength };
+}
+
 async function refreshEnso() {
+  // === Tentative 1 : SST hebdomadaire NOAA/CPC (7 jours de retard max) ===
   try {
-    // Source : NOAA/CPC fichier SST hebdomadaire — mis a jour chaque semaine
-    // https://www.cpc.ncep.noaa.gov/data/indices/wksst8110.for
-    const r = await fetch("https://www.cpc.ncep.noaa.gov/data/indices/wksst8110.for");
-    if (!r.ok) throw new Error("NOAA SST hebdomadaire HTTP " + r.status);
-    const text = await r.text();
-
-    // Filtrer les lignes de donnees (commencent par un chiffre)
-    const lines = text.split("\n").filter(l => /^\s*\d/.test(l) && l.trim().length > 10);
-    if (!lines.length) throw new Error("Fichier NOAA SST vide ou format inattendu");
-    const last = lines[lines.length - 1];
-
-    // Format colonnes fixes : "28JAN1990     26.2  -0.5  25.5  -0.7  28.7   0.2  27.0  -0.5"
-    // parts[0]=date, [1]=Nino12_SST, [2]=Nino12_ANOM, [3]=Nino3_SST, [4]=Nino3_ANOM,
-    // [5]=Nino4_SST, [6]=Nino4_ANOM, [7]=Nino34_SST, [8]=Nino34_ANOM
-    const parts = last.trim().split(/\s+/);
-    const weekStr = parts[0];
-    const nino34Anom = parseFloat(parts[8]);
-    if (isNaN(nino34Anom)) throw new Error("Anomalie Nino3.4 non parseable : " + last);
-
-    // Phase et intensite
-    let phase, strength;
-    const abs = Math.abs(nino34Anom);
-    if (nino34Anom >= 0.5) {
-      phase = "El Niño";
-      strength = abs >= 2.0 ? "Exceptionnel" : abs >= 1.5 ? "Fort" : abs >= 1.0 ? "Modéré" : "Faible";
-    } else if (nino34Anom <= -0.5) {
-      phase = "La Niña";
-      strength = abs >= 2.0 ? "Exceptionnel" : abs >= 1.5 ? "Fort" : abs >= 1.0 ? "Modéré" : "Faible";
-    } else {
-      phase = "Neutre";
-      strength = null;
-    }
-
-    // Parser la date "28JAN1990" → "28 Jan 1990"
     const MOIS_FR = { JAN:"Jan",FEB:"Fév",MAR:"Mar",APR:"Avr",MAY:"Mai",
                       JUN:"Jun",JUL:"Jul",AUG:"Aoû",SEP:"Sep",OCT:"Oct",NOV:"Nov",DEC:"Déc" };
-    const dm = weekStr.match(/^(\d{2})([A-Z]{3})(\d{4})$/);
-    const period = dm ? `${dm[1]} ${MOIS_FR[dm[2]] || dm[2]} ${dm[3]}` : weekStr;
-
+    const r = await fetch("https://www.cpc.ncep.noaa.gov/data/indices/wksst8110.for", {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; MeteoVaud/1.0; +https://meteo-vaud.onrender.com)",
+        "Accept": "text/plain, */*"
+      },
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!r.ok) throw new Error("NOAA CPC HTTP " + r.status);
+    const text = await r.text();
+    const lines = text.split("\n").filter(l => /^\s*\d/.test(l) && l.trim().length > 10);
+    if (!lines.length) throw new Error("Fichier NOAA SST vide");
+    const last = lines[lines.length - 1];
+    // Extraire la date (format "27JAN2021") puis les nombres qui suivent.
+    // Les valeurs negatives collent au chiffre precedent (ex: "24.6-0.4")
+    // donc on ne peut pas faire split() — on extrait par regex.
+    const dateMatch = last.match(/^\s*(\d{2}[A-Z]{3}\d{4})/);
+    if (!dateMatch) throw new Error("Date non parseable : " + last);
+    const rest = last.slice(last.indexOf(dateMatch[1]) + dateMatch[1].length);
+    const nums = (rest.match(/-?\d+\.?\d*/g) || []).map(Number);
+    // Ordre : Nino1+2_SST, Nino1+2_ANOM, Nino3_SST, Nino3_ANOM,
+    //         Nino4_SST, Nino4_ANOM, Nino3.4_SST, Nino3.4_ANOM
+    if (nums.length < 8) throw new Error("Colonnes insuffisantes : " + rest.trim());
+    const nino34Anom = nums[7]; // Nino3.4 ANOM = 8e nombre (index 7)
+    if (isNaN(nino34Anom)) throw new Error("Nino3.4 non parseable");
+    const dm = dateMatch[1].match(/^(\d{2})([A-Z]{3})(\d{4})$/);
+    const period = dm ? `${dm[1]} ${MOIS_FR[dm[2]] || dm[2]} ${dm[3]}` : parts[0];
+    const { phase, strength } = ensoPhase(nino34Anom);
     const enso = { phase, strength, sstAnomaly: nino34Anom, period, source: "NOAA hebdo" };
     ensoCache = { updatedAt: new Date().toISOString(), enso, lastError: null };
-    console.log(`[refresh:enso] ${phase}${strength ? " " + strength : ""} anomalie ${nino34Anom}°C semaine du ${period}`);
+    console.log(`[refresh:enso] HEBDO ${phase}${strength ? " " + strength : ""} ${nino34Anom}°C sem. ${period}`);
+    return;
+  } catch (weeklyErr) {
+    console.warn("[refresh:enso] source hebdo inaccessible :", weeklyErr.message, "→ fallback mensuel");
+  }
+
+  // === Fallback : source mensuelle existante (sources/enso.js) ===
+  try {
+    const enso = await fetchEnso();
+    if (enso && enso.sstAnomaly !== undefined) {
+      // Recalculer phase/strength avec nos seuils corriges
+      const { phase, strength } = ensoPhase(enso.sstAnomaly);
+      enso.phase = phase;
+      enso.strength = strength;
+      enso.source = "NOAA mensuel";
+    }
+    ensoCache = { updatedAt: new Date().toISOString(), enso, lastError: null };
+    console.log(`[refresh:enso] MENSUEL ${enso.phase}${enso.strength ? " " + enso.strength : ""} ${enso.sstAnomaly}°C (${enso.period})`);
   } catch (err) {
     ensoCache.lastError = err.message;
-    console.error("[refresh:enso] echec :", err.message);
+    console.error("[refresh:enso] echec total :", err.message);
   }
 }
 
