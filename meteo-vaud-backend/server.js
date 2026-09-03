@@ -308,13 +308,48 @@ async function refreshEarthquakes() {
 
 async function refreshEnso() {
   try {
-    const enso = await fetchEnso();
-    ensoCache = {
-      updatedAt: new Date().toISOString(),
-      enso,
-      lastError: null
-    };
-    console.log(`[refresh:enso] ${enso.phase}${enso.strength ? " (" + enso.strength + ")" : ""} — anomalie ${enso.sstAnomaly}°C (${ensoCache.updatedAt})`);
+    // Source : NOAA/CPC fichier SST hebdomadaire — mis a jour chaque semaine
+    // https://www.cpc.ncep.noaa.gov/data/indices/wksst8110.for
+    const r = await fetch("https://www.cpc.ncep.noaa.gov/data/indices/wksst8110.for");
+    if (!r.ok) throw new Error("NOAA SST hebdomadaire HTTP " + r.status);
+    const text = await r.text();
+
+    // Filtrer les lignes de donnees (commencent par un chiffre)
+    const lines = text.split("\n").filter(l => /^\s*\d/.test(l) && l.trim().length > 10);
+    if (!lines.length) throw new Error("Fichier NOAA SST vide ou format inattendu");
+    const last = lines[lines.length - 1];
+
+    // Format colonnes fixes : "28JAN1990     26.2  -0.5  25.5  -0.7  28.7   0.2  27.0  -0.5"
+    // parts[0]=date, [1]=Nino12_SST, [2]=Nino12_ANOM, [3]=Nino3_SST, [4]=Nino3_ANOM,
+    // [5]=Nino4_SST, [6]=Nino4_ANOM, [7]=Nino34_SST, [8]=Nino34_ANOM
+    const parts = last.trim().split(/\s+/);
+    const weekStr = parts[0];
+    const nino34Anom = parseFloat(parts[8]);
+    if (isNaN(nino34Anom)) throw new Error("Anomalie Nino3.4 non parseable : " + last);
+
+    // Phase et intensite
+    let phase, strength;
+    const abs = Math.abs(nino34Anom);
+    if (nino34Anom >= 0.5) {
+      phase = "El Niño";
+      strength = abs >= 2.0 ? "Exceptionnel" : abs >= 1.5 ? "Fort" : abs >= 1.0 ? "Modéré" : "Faible";
+    } else if (nino34Anom <= -0.5) {
+      phase = "La Niña";
+      strength = abs >= 2.0 ? "Exceptionnel" : abs >= 1.5 ? "Fort" : abs >= 1.0 ? "Modéré" : "Faible";
+    } else {
+      phase = "Neutre";
+      strength = null;
+    }
+
+    // Parser la date "28JAN1990" → "28 Jan 1990"
+    const MOIS_FR = { JAN:"Jan",FEB:"Fév",MAR:"Mar",APR:"Avr",MAY:"Mai",
+                      JUN:"Jun",JUL:"Jul",AUG:"Aoû",SEP:"Sep",OCT:"Oct",NOV:"Nov",DEC:"Déc" };
+    const dm = weekStr.match(/^(\d{2})([A-Z]{3})(\d{4})$/);
+    const period = dm ? `${dm[1]} ${MOIS_FR[dm[2]] || dm[2]} ${dm[3]}` : weekStr;
+
+    const enso = { phase, strength, sstAnomaly: nino34Anom, period, source: "NOAA hebdo" };
+    ensoCache = { updatedAt: new Date().toISOString(), enso, lastError: null };
+    console.log(`[refresh:enso] ${phase}${strength ? " " + strength : ""} anomalie ${nino34Anom}°C semaine du ${period}`);
   } catch (err) {
     ensoCache.lastError = err.message;
     console.error("[refresh:enso] echec :", err.message);
@@ -824,7 +859,7 @@ var httpServer = app.listen(PORT, async () => {
   setInterval(refreshNeo, 6 * 60 * 60 * 1000); // 6h : les donnees NEO bougent lentement
   setInterval(refreshJwst, 12 * 60 * 60 * 1000); // 12h : les publications NASA ne changent pas souvent
   setInterval(refreshEarthquakes, 15 * 60 * 1000); // 15 min : les seismes sont un evenement rapide
-  setInterval(refreshEnso, 24 * 60 * 60 * 1000); // 24h : le NOAA ne publie qu'1x/mois
+  setInterval(refreshEnso, 12 * 60 * 60 * 1000); // 12h : donnees hebdomadaires NOAA SST
   setInterval(refreshSpaceWeather, 3 * 60 * 60 * 1000); // 3h : cadence native du Kp
   setInterval(refreshPollen, 60 * 60 * 1000); // 1h : cadence native de la donnee pollen
   setInterval(refreshGlobalTemp, 24 * 60 * 60 * 1000); // 24h : le NASA ne publie qu'1x/mois environ
