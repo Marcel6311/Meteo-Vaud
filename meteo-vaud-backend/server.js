@@ -328,7 +328,8 @@ async function refreshEnso() {
   try {
     const MOIS_FR = { JAN:"Jan",FEB:"Fév",MAR:"Mar",APR:"Avr",MAY:"Mai",
                       JUN:"Jun",JUL:"Jul",AUG:"Aoû",SEP:"Sep",OCT:"Oct",NOV:"Nov",DEC:"Déc" };
-    const r = await fetch("https://www.cpc.ncep.noaa.gov/data/indices/wksst8110.for", {
+    // wksst9120.for = baseline 1991-2020 (remplace wksst8110.for depuis 2021)
+    const r = await fetch("https://www.cpc.ncep.noaa.gov/data/indices/wksst9120.for", {
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; MeteoVaud/1.0; +https://meteo-vaud.onrender.com)",
         "Accept": "text/plain, */*"
