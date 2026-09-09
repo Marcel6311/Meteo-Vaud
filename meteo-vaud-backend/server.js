@@ -206,18 +206,46 @@ async function refreshFirms() {
 }
 
 async function translateToFrench(text) {
+  const safeText = text.slice(0, 2000); // securite longueur URL
+
+  // Tentative 1 : MyMemory (quota 10 000 mots/j avec email enregistre)
   try {
     const url = "https://api.mymemory.translated.net/get?q=" +
-      encodeURIComponent(text) +
+      encodeURIComponent(safeText) +
       "&langpair=en|fr&de=roseblanche20%40gmail.com";
-    const r = await fetch(url);
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
     const data = await r.json();
-    if (data.responseStatus === 200 && data.responseData && data.responseData.translatedText) {
+    if (
+      data.responseStatus === 200 &&
+      data.responseData &&
+      data.responseData.translatedText &&
+      data.responseData.translatedText !== safeText // MyMemory retourne parfois le texte original en echec silencieux
+    ) {
+      console.log("[traduction] MyMemory OK");
       return data.responseData.translatedText;
     }
+    console.warn("[traduction] MyMemory ko status=" + data.responseStatus + " match=" + (data.responseData?.translatedText === safeText));
   } catch (e) {
-    console.warn("[traduction] echec MyMemory :", e.message);
+    console.warn("[traduction] MyMemory echec :", e.message);
   }
+
+  // Tentative 2 : Google Translate non officiel (fallback sans cle API)
+  try {
+    const url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=fr&dt=t&q=" +
+      encodeURIComponent(safeText);
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const raw = await r.json();
+    if (Array.isArray(raw) && Array.isArray(raw[0])) {
+      const translated = raw[0].map(function(seg){ return seg[0] || ""; }).join("").trim();
+      if (translated) {
+        console.log("[traduction] Google Translate fallback OK");
+        return translated;
+      }
+    }
+  } catch (e) {
+    console.warn("[traduction] Google Translate fallback echec :", e.message);
+  }
+
   return null;
 }
 
