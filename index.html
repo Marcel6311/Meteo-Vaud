@@ -1330,9 +1330,14 @@
 
     <!-- NEO -->
     <div style="padding: 22px;">
-      <h3 style="margin: 0 0 6px 0; color: var(--amber); font-size: 14px;">☄️ Astéroïdes proches (7 jours)</h3>
+      <h3 style="margin: 0 0 6px 0; color: var(--amber); font-size: 14px;">
+        ☄️ Astéroïdes proches (7 jours)
+        <button id="neoRefreshBtn" title="Rafraîchir les astéroïdes"
+          style="background:none;border:1px solid var(--border);color:var(--text-dim);border-radius:4px;
+                 padding:1px 6px;cursor:pointer;font-size:12px;line-height:1.6;">🔄</button>
+      </h3>
       <div id="neoCount" style="font-size: 12px; color: var(--text-dim); margin-bottom: 10px;"></div>
-      <div id="neoList" style="font-size: 12px;"></div>
+      <div id="neoList" style="font-size: 12px;">Chargement…</div>
     </div>
 
     <!-- Lune & Soleil (Lausanne) -->
@@ -4590,21 +4595,36 @@
       });
   }
 
-  function loadAstro() {
-    astroLoaded = true;
-    renderMoonSunPanel(); // calcule localement, aucun appel reseau necessaire
-    fetchAndRenderSpaceWeather();
-    fetchApodPanel();
+  function fetchNeoPanel() {
+    var neoList = document.getElementById("neoList");
+    var neoCount = document.getElementById("neoCount");
+    var btn = document.getElementById("neoRefreshBtn");
+    if (btn) btn.disabled = true;
+    if (neoList) neoList.innerHTML = "<em>Chargement…</em>";
+    if (neoCount) neoCount.textContent = "";
 
-    // NEO
     fetch(API_BASE + "/neo", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (!data.asteroids || data.asteroids.length === 0) {
-          document.getElementById("neoList").innerHTML = "<em>Aucun asteroide cette semaine.</em>";
+        // Erreur côté serveur : afficher le message et un bouton réessayer
+        if (data.lastError) {
+          neoList.innerHTML =
+            '<div style="background:#1a1f2a;border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center;">' +
+            '<div style="font-size:28px;margin-bottom:8px;">☄️</div>' +
+            '<div style="color:var(--amber);font-size:12px;margin-bottom:4px;">Erreur NASA NeoWs</div>' +
+            '<div style="color:var(--text-dim);font-size:11px;margin-bottom:12px;">' + data.lastError + '</div>' +
+            '<div style="color:var(--text-faint);font-size:11px;">Cliquez sur 🔄 pour réessayer</div>' +
+            '</div>';
+          neoCount.textContent = "";
           return;
         }
-        document.getElementById("neoCount").textContent = data.count + " astéroïdes dans les 7 prochains jours";
+        // Résultat vide mais sans erreur (rare mais possible)
+        if (!data.asteroids || data.asteroids.length === 0) {
+          neoList.innerHTML = "<em>Aucun astéroïde répertorié pour les 7 prochains jours.</em>";
+          neoCount.textContent = "";
+          return;
+        }
+        neoCount.textContent = data.count + " astéroïdes dans les 7 prochains jours";
 
         var html = '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
         html += '<tr style="color:var(--amber); border-bottom:1px solid var(--hairline);">';
@@ -4614,7 +4634,6 @@
         html += '<th style="text-align:right;padding:6px 4px;">Vitesse</th>';
         html += '<th style="text-align:center;padding:6px 4px;">⚠️</th></tr>';
 
-        // Afficher les 20 plus proches
         var shown = data.asteroids.slice(0, 20);
         shown.forEach(function (a) {
           var diamStr = Math.round(a.diameter_min_km * 1000) + "-" + Math.round(a.diameter_max_km * 1000);
@@ -4630,16 +4649,33 @@
           html += '<td style="text-align:center;padding:6px 4px;">' + hazard + '</td>';
           html += '</tr>';
         });
-
         html += '</table>';
         if (data.asteroids.length > 20) {
           html += '<div style="color:var(--text-faint);font-size:11px;margin-top:8px;">+ ' + (data.asteroids.length - 20) + ' autres astéroïdes non affichés</div>';
         }
-        document.getElementById("neoList").innerHTML = html;
+        neoList.innerHTML = html;
       })
-      .catch(function () {
-        document.getElementById("neoList").innerHTML = "<em>Erreur de chargement des données NEO.</em>";
+      .catch(function (err) {
+        neoList.innerHTML =
+          '<div style="background:#1a1f2a;border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center;">' +
+          '<div style="font-size:28px;margin-bottom:8px;">☄️</div>' +
+          '<div style="color:var(--amber);font-size:12px;margin-bottom:4px;">Connexion impossible</div>' +
+          '<div style="color:var(--text-faint);font-size:11px;">Cliquez sur 🔄 pour réessayer</div>' +
+          '</div>';
+      })
+      .finally(function () {
+        if (btn) btn.disabled = false;
       });
+  }
+
+  function loadAstro() {
+    astroLoaded = true;
+    renderMoonSunPanel(); // calcule localement, aucun appel reseau necessaire
+    fetchAndRenderSpaceWeather();
+    fetchApodPanel();
+
+    // NEO — délégué à fetchNeoPanel()
+    fetchNeoPanel();
 
     // JWST Gallery — 100 images curateees ESA Webb
     var jwstCuratedImages = null;
@@ -4903,6 +4939,10 @@
   // Bouton de rafraichissement manuel de l'APOD
   document.getElementById("apodRefreshBtn").addEventListener("click", function () {
     fetchApodPanel();
+  });
+
+  document.getElementById("neoRefreshBtn").addEventListener("click", function () {
+    fetchNeoPanel();
   });
 
   els.astroClose.addEventListener("click", function () {
