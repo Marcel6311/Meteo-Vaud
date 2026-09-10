@@ -206,46 +206,56 @@ async function refreshFirms() {
 }
 
 async function translateToFrench(text) {
-  const safeText = text.slice(0, 2000); // securite longueur URL
+  const safeText = text.slice(0, 1500); // securite longueur URL (MyMemory limite ~2500 chars avec email)
 
   // Tentative 1 : MyMemory (quota 10 000 mots/j avec email enregistre)
   try {
     const url = "https://api.mymemory.translated.net/get?q=" +
       encodeURIComponent(safeText) +
       "&langpair=en|fr&de=roseblanche20%40gmail.com";
-    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
     const data = await r.json();
-    if (
-      data.responseStatus === 200 &&
-      data.responseData &&
-      data.responseData.translatedText &&
-      data.responseData.translatedText !== safeText // MyMemory retourne parfois le texte original en echec silencieux
-    ) {
-      console.log("[traduction] MyMemory OK");
-      return data.responseData.translatedText;
+    const tr = data?.responseData?.translatedText;
+    if (data.responseStatus === 200 && tr && tr !== safeText && tr.length > 10) {
+      console.log("[traduction] MyMemory OK (" + tr.length + " chars)");
+      return tr;
     }
-    console.warn("[traduction] MyMemory ko status=" + data.responseStatus + " match=" + (data.responseData?.translatedText === safeText));
+    console.warn("[traduction] MyMemory ko status=" + data.responseStatus + " quota=" + JSON.stringify(data.quotaFinished));
   } catch (e) {
     console.warn("[traduction] MyMemory echec :", e.message);
   }
 
-  // Tentative 2 : Google Translate non officiel (fallback sans cle API)
+  // Tentative 2 : Lingva Translate (proxy Google Translate, API publique JSON)
   try {
-    const url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=fr&dt=t&q=" +
-      encodeURIComponent(safeText);
-    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    const raw = await r.json();
-    if (Array.isArray(raw) && Array.isArray(raw[0])) {
-      const translated = raw[0].map(function(seg){ return seg[0] || ""; }).join("").trim();
-      if (translated) {
-        console.log("[traduction] Google Translate fallback OK");
-        return translated;
-      }
+    const r = await fetch(
+      "https://lingva.ml/api/v1/en/fr/" + encodeURIComponent(safeText),
+      { signal: AbortSignal.timeout(10000) }
+    );
+    const data = await r.json();
+    if (data.translation && data.translation.length > 10) {
+      console.log("[traduction] Lingva OK (" + data.translation.length + " chars)");
+      return data.translation;
     }
   } catch (e) {
-    console.warn("[traduction] Google Translate fallback echec :", e.message);
+    console.warn("[traduction] Lingva echec :", e.message);
   }
 
+  // Tentative 3 : MyMemory sans email (quota separé)
+  try {
+    const url = "https://api.mymemory.translated.net/get?q=" +
+      encodeURIComponent(safeText) + "&langpair=en|fr";
+    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    const data = await r.json();
+    const tr = data?.responseData?.translatedText;
+    if (data.responseStatus === 200 && tr && tr !== safeText && tr.length > 10) {
+      console.log("[traduction] MyMemory (anonyme) OK");
+      return tr;
+    }
+  } catch (e) {
+    console.warn("[traduction] MyMemory anonyme echec :", e.message);
+  }
+
+  console.error("[traduction] toutes les sources ont echoue");
   return null;
 }
 
@@ -276,13 +286,44 @@ async function refreshApod() {
 
 async function refreshNeo() {
   try {
-    const asteroids = await fetchNeo();
+    const key = process.env.NASA_API_KEY || "DEMO_KEY";
+    const today = new Date();
+    const startDate = today.toISOString().slice(0, 10);
+    const end = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const endDate = end.toISOString().slice(0, 10);
+    const url = `https://api.nasa.gov/neo/rest/v1/feed?start_date=${startDate}&end_date=${endDate}&api_key=${key}`;
+    console.log(`[refresh:neo] requete NASA NeoWs ${startDate} → ${endDate} (cle: ${key !== "DEMO_KEY" ? "perso" : "DEMO_KEY"})`);
+    const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error("NASA NeoWs HTTP " + r.status + " " + (await r.text()).slice(0, 200));
+    const data = await r.json();
+    const nearEarth = data.near_earth_objects || {};
+    const asteroids = [];
+    Object.keys(nearEarth).forEach(function(date) {
+      (nearEarth[date] || []).forEach(function(ast) {
+        const approach = (ast.close_approach_data || [])[0];
+        if (!approach) return;
+        asteroids.push({
+          id: ast.id,
+          name: ast.name,
+          date: approach.close_approach_date,
+          diameter_min_km: (ast.estimated_diameter?.kilometers?.estimated_diameter_min) || 0,
+          diameter_max_km: (ast.estimated_diameter?.kilometers?.estimated_diameter_max) || 0,
+          miss_distance_lunar: parseFloat(approach.miss_distance?.lunar || 0),
+          miss_distance_km: parseFloat(approach.miss_distance?.kilometers || 0),
+          velocity_kmh: parseFloat(approach.relative_velocity?.kilometers_per_hour || 0),
+          is_hazardous: !!ast.is_potentially_hazardous_asteroid
+        });
+      });
+    });
+    // Trier par distance lunaire croissante (plus proche en premier)
+    asteroids.sort(function(a, b) { return a.miss_distance_lunar - b.miss_distance_lunar; });
     neoCache = {
       updatedAt: new Date().toISOString(),
       asteroids,
       lastError: null
     };
-    console.log(`[refresh:neo] ${asteroids.length} asteroides recuperes (${neoCache.updatedAt})`);
+    const hazCount = asteroids.filter(function(a){ return a.is_hazardous; }).length;
+    console.log(`[refresh:neo] ${asteroids.length} asteroides (dont ${hazCount} potentiellement dangereux) (${neoCache.updatedAt})`);
   } catch (err) {
     neoCache.lastError = err.message;
     console.error("[refresh:neo] echec :", err.message);
