@@ -1531,6 +1531,12 @@
     maxZoom: 16,
     noWrap: true
   }).addTo(map);
+  // Couche étiquettes (villes, routes) à superposer sur le fond Esri
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 16,
+    noWrap: true,
+    pane: "overlayPane"
+  }).addTo(map);
 
   var markers = {}; // station_id -> L.circleMarker
   var currentReadings = []; // dernieres lectures recues, pour retrouver la couleur d'origine au deselectionnement
