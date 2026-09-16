@@ -57,15 +57,26 @@ async function fetchOnePoint(station) {
   };
 
   if (!GOOGLE_WEATHER_KEY) {
-    return { ...empty, erreur: "GOOGLE_WEATHER_KEY non definie (variable d'environnement Render manquante)" };
+    const msg = "GOOGLE_WEATHER_KEY non definie (variable d'environnement Render manquante)";
+    console.error("[googleweather] " + msg);
+    return { ...empty, erreur: msg };
   }
 
   try {
     const res = await fetch(buildUrl(station.lat, station.lon));
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
+    const rawText = await res.text();
 
-    if (!data || !data.temperature) throw new Error("Reponse Google Weather vide");
+    if (!res.ok) {
+      console.error("[googleweather] HTTP " + res.status + " pour " + station.name + " : " + rawText.slice(0, 500));
+      throw new Error("HTTP " + res.status + " - " + rawText.slice(0, 200));
+    }
+
+    const data = JSON.parse(rawText);
+
+    if (!data || !data.temperature) {
+      console.error("[googleweather] reponse sans temperature pour " + station.name + " : " + rawText.slice(0, 500));
+      throw new Error("Reponse Google Weather vide");
+    }
 
     return {
       station_id: station.code,
