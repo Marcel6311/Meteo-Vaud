@@ -660,6 +660,7 @@ app.get("/stations/compare", async (req, res) => {
         googleweather_visibilite: google ? google.visibilite : null,
         googleweather_pression: google ? google.pression : null,
         googleweather_tendance_pression: google ? google.tendance_pression : null,
+                googleweather_erreur: google ? google.erreur : null,
         ecart: diff
       };
     });
