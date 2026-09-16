@@ -25,7 +25,7 @@ const FRANCE_BORDER = require("./config/france-border");
 const { fetchCurrentReadings } = require("./sources/swissmetnet");
 const { getAllStations } = require("./sources/stationRegistry");
 const { fetchCapitalsList } = require("./sources/capitals");
-const { fetchAzureMapsForStations } = require("./sources/azuremaps");
+const { fetchGoogleWeatherForStations } = require("./sources/googleweather");
 const { fetchHeatwaveForStations, TEMP_THRESHOLD_C, CONSECUTIVE_DAYS_THRESHOLD } = require("./sources/heatwave");
 const { fetchEpicFrames } = require("./sources/epic");
 const { fetchFirmsData } = require("./sources/firms");
@@ -628,21 +628,21 @@ app.get("/stations/current", (req, res) => {
   });
 });
 
-// GET /stations/compare - SwissMetNet vs Azure Maps sur les stations vaudoises
+// GET /stations/compare - SwissMetNet vs Google Weather (WeatherNext 3) sur les stations vaudoises
 // IMPORTANT : cette route doit rester declaree AVANT /stations/:code,
 // sinon Express interprete "compare" comme un code de station et cette
 // route n'est jamais atteinte.
 app.get("/stations/compare", async (req, res) => {
   try {
-    const azureReadings = await fetchAzureMapsForStations(VD_STATIONS);
-    const azureByCode = Object.fromEntries(azureReadings.map((r) => [r.station_id, r]));
+    const googleReadings = await fetchGoogleWeatherForStations(VD_STATIONS);
+    const googleByCode = Object.fromEntries(googleReadings.map((r) => [r.station_id, r]));
 
     const comparison = caches.vd.readings.map((swiss) => {
-      const azure = azureByCode[swiss.station_id];
+      const google = googleByCode[swiss.station_id];
       const diff =
         swiss.temperature !== null && swiss.temperature !== undefined &&
-        azure && azure.temperature !== null && azure.temperature !== undefined
-          ? Math.round((azure.temperature - swiss.temperature) * 10) / 10
+        google && google.temperature !== null && google.temperature !== undefined
+          ? Math.round((google.temperature - swiss.temperature) * 10) / 10
           : null;
 
       return {
@@ -651,15 +651,15 @@ app.get("/stations/compare", async (req, res) => {
         lat: swiss.lat,
         lon: swiss.lon,
         swissmetnet_temperature: swiss.temperature,
-        azuremaps_temperature: azure ? azure.temperature : null,
-        azuremaps_description: azure ? azure.description : null,
-        azuremaps_ressenti: azure ? azure.ressenti : null,
-        azuremaps_point_de_rosee: azure ? azure.point_de_rosee : null,
-        azuremaps_indice_uv: azure ? azure.indice_uv : null,
-        azuremaps_couverture_nuageuse: azure ? azure.couverture_nuageuse : null,
-        azuremaps_visibilite: azure ? azure.visibilite : null,
-        azuremaps_pression: azure ? azure.pression : null,
-        azuremaps_tendance_pression: azure ? azure.tendance_pression : null,
+        googleweather_temperature: google ? google.temperature : null,
+        googleweather_description: google ? google.description : null,
+        googleweather_ressenti: google ? google.ressenti : null,
+        googleweather_point_de_rosee: google ? google.point_de_rosee : null,
+        googleweather_indice_uv: google ? google.indice_uv : null,
+        googleweather_couverture_nuageuse: google ? google.couverture_nuageuse : null,
+        googleweather_visibilite: google ? google.visibilite : null,
+        googleweather_pression: google ? google.pression : null,
+        googleweather_tendance_pression: google ? google.tendance_pression : null,
         ecart: diff
       };
     });
@@ -667,9 +667,9 @@ app.get("/stations/compare", async (req, res) => {
     res.json({
       sources: {
         swissmetnet: "MeteoSwiss (SwissMetNet, OGD) - mesure officielle",
-        azuremaps: "Azure Maps Weather (Microsoft) - produit meteo commercial"
+        googleweather: "Google Weather API (WeatherNext 3, Google DeepMind) - produit meteo IA"
       },
-      note: "Azure Maps Weather n'est pas confirme comme utilisant le modele Aurora en interne.",
+      note: "Google Weather API tourne sur le modele WeatherNext 3 de Google DeepMind (resolution 5km, mises a jour horaires).",
       updatedAt: new Date().toISOString(),
       comparison
     });
