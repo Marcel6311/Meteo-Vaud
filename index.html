@@ -574,7 +574,9 @@
   .error-msg { color: var(--amber); }
 
   /* Leaflet dark tweaks */
-  .leaflet-container { background: var(--panel); }
+  .leaflet-container { background: #1a1a1a; }
+  /* Filtre sombre sur les tuiles OSM — toutes les rues visibles, sans clé API */
+  .osm-dark { filter: invert(100%) hue-rotate(180deg) brightness(88%) contrast(88%) saturate(40%); }
   .leaflet-popup-content-wrapper, .leaflet-popup-tip {
     background: var(--panel-alt);
     color: var(--text);
@@ -1526,16 +1528,12 @@
   })
     .setView(SCOPE_VIEWS.vd.center, SCOPE_VIEWS.vd.zoom);
 
-  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
-    attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ &copy; OpenStreetMap',
-    maxZoom: 16,
-    noWrap: true
-  }).addTo(map);
-  // Couche étiquettes (villes, routes) à superposer sur le fond Esri
-  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
-    maxZoom: 16,
+  // OpenStreetMap avec filtre CSS sombre — toutes les rues, sans clé API
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19,
     noWrap: true,
-    pane: "overlayPane"
+    className: "osm-dark"
   }).addTo(map);
 
   var markers = {}; // station_id -> L.circleMarker
