@@ -294,51 +294,65 @@ async function translateToFrench(text) {
 }
 
 async function refreshApod() {
-  try {
-    const key = process.env.NASA_API_KEY || "DEMO_KEY";
-    // thumbs=true : retourne thumbnail_url pour les APODs video
-    const apodUrl = `https://api.nasa.gov/planetary/apod?api_key=${key}&thumbs=true`;
-    const apodRes = await fetch(apodUrl, { signal: AbortSignal.timeout(15000) });
-    if (!apodRes.ok) throw new Error("NASA APOD HTTP " + apodRes.status);
-    const apod = await apodRes.json();
+  const key = process.env.NASA_API_KEY || "DEMO_KEY";
+  const IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp|tif|tiff)(\?.*)?$/i;
+  const GENERIC_TITLES = ["nasa science", "apod", "astronomy picture of the day"];
 
-    // Validation : la NASA migre vers science.nasa.gov et renvoie parfois
-    // "NASA Science" comme titre avec une URL de site web au lieu d'une image.
-    const GENERIC_TITLES = ["nasa science", "apod", "astronomy picture of the day"];
-    if (!apod || !apod.title || GENERIC_TITLES.includes((apod.title || "").toLowerCase().trim())) {
-      throw new Error("NASA APOD donnees invalides (titre: \"" + (apod?.title || "?") + "\")");
-    }
-
-    // Validation de l'URL image (doit pointer vers une image, pas une page web)
-    const IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp|tif|tiff)(\?.*)?$/i;
+  // Retourne true si la reponse NASA est une vraie APOD valide
+  function isValidApod(apod) {
+    if (!apod || !apod.title) return false;
+    if (GENERIC_TITLES.includes(apod.title.toLowerCase().trim())) return false;
     if (apod.media_type === "image") {
+      // Si l'URL principale n'est pas une image mais hdurl l'est, on corrige silencieusement
       if (apod.url && !IMAGE_EXT.test(apod.url)) {
-        // L'URL principale n'est pas une image : essayer hdurl
         if (apod.hdurl && IMAGE_EXT.test(apod.hdurl)) {
-          console.warn("[refresh:apod] URL principale invalide (" + apod.url.slice(0, 80) + "), utilisation de hdurl");
-          apod.url = apod.hdurl;
+          apod.url = apod.hdurl; // correction en place
         } else {
-          throw new Error("NASA APOD URL ne pointe pas vers une image: " + (apod.url || "").slice(0, 100));
+          return false; // aucune URL image valide
         }
       }
     }
-
-    // Traduction de l'explication
-    if (apod.explanation) {
-      const fr = await translateToFrench(apod.explanation);
-      if (fr) apod.explanation_fr = fr;
-    }
-
-    apodCache = {
-      updatedAt: new Date().toISOString(),
-      apod,
-      lastError: null
-    };
-    console.log(`[refresh:apod] "${apod.title}" type:${apod.media_type}${apod.thumbnail_url ? " (miniature OK)" : ""} — traduction: ${apod.explanation_fr ? "OK" : "indispo"} (${apodCache.updatedAt})`);
-  } catch (err) {
-    apodCache.lastError = err.message;
-    console.error("[refresh:apod] echec :", err.message);
+    return true;
   }
+
+  // La NASA migre vers science.nasa.gov : certaines dates renvoient des donnees
+  // invalides ("NASA Science"). On essaie jusqu'a 3 jours en arriere.
+  const candidateDates = [0, 1, 2].map(function(daysAgo) {
+    var d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    return d.toISOString().slice(0, 10);
+  });
+
+  for (var i = 0; i < candidateDates.length; i++) {
+    var date = candidateDates[i];
+    try {
+      var apodUrl = "https://api.nasa.gov/planetary/apod?api_key=" + key + "&thumbs=true&date=" + date;
+      var apodRes = await fetch(apodUrl, { signal: AbortSignal.timeout(15000) });
+      if (!apodRes.ok) {
+        console.warn("[refresh:apod] HTTP " + apodRes.status + " pour " + date);
+        continue;
+      }
+      var apod = await apodRes.json();
+      if (!isValidApod(apod)) {
+        console.warn("[refresh:apod] APOD invalide pour " + date + " — titre: \"" + (apod?.title || "?") + "\" url: " + (apod?.url || "").slice(0, 80));
+        continue;
+      }
+      // APOD valide : on traduit et on met en cache
+      if (apod.explanation) {
+        var fr = await translateToFrench(apod.explanation);
+        if (fr) apod.explanation_fr = fr;
+      }
+      apodCache = { updatedAt: new Date().toISOString(), apod: apod, lastError: null };
+      console.log("[refresh:apod] \"" + apod.title + "\" (" + date + ") type:" + apod.media_type + (apod.thumbnail_url ? " (miniature OK)" : "") + " — traduction: " + (apod.explanation_fr ? "OK" : "indispo"));
+      return; // succes, on sort
+    } catch (err) {
+      console.warn("[refresh:apod] echec pour " + date + " :", err.message);
+    }
+  }
+
+  // Aucune des 3 dates n'a donne une APOD valide
+  apodCache.lastError = "NASA APOD renvoie des donnees invalides (migration en cours) — reessai dans 6h";
+  console.error("[refresh:apod] echec sur 3 dates consecutives");
 }
 
 async function refreshNeo() {
