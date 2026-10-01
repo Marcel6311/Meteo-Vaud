@@ -298,13 +298,14 @@ async function refreshApod() {
   const IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp|tif|tiff)(\?.*)?$/i;
   const GENERIC_TITLES = ["nasa science", "apod", "astronomy picture of the day"];
 
-  // Retourne true si la reponse NASA est une vraie APOD valide
+  // Valide que la reponse est un vrai APOD avec une image utilisable
   function isValidApod(apod) {
     if (!apod || !apod.title) return false;
+    // Detecter les titres generiques renvoyés pendant la migration NASA
     if (GENERIC_TITLES.includes(apod.title.toLowerCase().trim())) return false;
     if (apod.media_type === "image") {
-      // Si l'URL principale n'est pas une image mais hdurl l'est, on corrige silencieusement
       if (apod.url && !IMAGE_EXT.test(apod.url)) {
+        // URL principale non-image : tentative avec hdurl
         if (apod.hdurl && IMAGE_EXT.test(apod.hdurl)) {
           apod.url = apod.hdurl; // correction en place
         } else {
@@ -315,16 +316,21 @@ async function refreshApod() {
     return true;
   }
 
-  // La NASA migre vers science.nasa.gov : certaines dates renvoient des donnees
-  // invalides ("NASA Science"). On essaie jusqu'a 3 jours en arriere.
-  const candidateDates = [0, 1, 2].map(function(daysAgo) {
-    var d = new Date();
-    d.setDate(d.getDate() - daysAgo);
+  // 1) Essayer les 7 derniers jours (migration NASA peut casser plusieurs jours)
+  var today = new Date();
+  var recentDates = Array.from({ length: 7 }, function(_, i) {
+    var d = new Date(today);
+    d.setDate(d.getDate() - i);
     return d.toISOString().slice(0, 10);
   });
 
-  for (var i = 0; i < candidateDates.length; i++) {
-    var date = candidateDates[i];
+  // 2) Repli sur des dates historiques connues pour etre stables
+  var historicalDates = ["2024-09-15", "2024-07-04", "2024-03-20", "2023-12-25", "2023-06-21"];
+
+  var allDates = recentDates.concat(historicalDates);
+
+  for (var i = 0; i < allDates.length; i++) {
+    var date = allDates[i];
     try {
       var apodUrl = "https://api.nasa.gov/planetary/apod?api_key=" + key + "&thumbs=true&date=" + date;
       var apodRes = await fetch(apodUrl, { signal: AbortSignal.timeout(15000) });
@@ -333,26 +339,37 @@ async function refreshApod() {
         continue;
       }
       var apod = await apodRes.json();
+
+      // Detecter une erreur de quota/cle NASA (la reponse n'est pas un APOD)
+      if (apod && apod.error) {
+        var code = (apod.error.code || "");
+        console.error("[refresh:apod] Erreur API NASA : " + code + " — " + (apod.error.message || "").slice(0, 100));
+        apodCache.lastError = "Clé API NASA : " + (apod.error.message || code).slice(0, 120);
+        return; // inutile d'essayer d'autres dates
+      }
+
       if (!isValidApod(apod)) {
-        console.warn("[refresh:apod] APOD invalide pour " + date + " — titre: \"" + (apod?.title || "?") + "\" url: " + (apod?.url || "").slice(0, 80));
+        console.warn("[refresh:apod] invalide pour " + date + " — titre: \"" + (apod?.title || "?") + "\" url: " + (apod?.url || "").slice(0, 80));
         continue;
       }
-      // APOD valide : on traduit et on met en cache
+
+      // APOD valide — traduction et mise en cache
       if (apod.explanation) {
         var fr = await translateToFrench(apod.explanation);
         if (fr) apod.explanation_fr = fr;
       }
+      if (i >= 7) apod._fallbackDate = date; // marquer les replis historiques
       apodCache = { updatedAt: new Date().toISOString(), apod: apod, lastError: null };
-      console.log("[refresh:apod] \"" + apod.title + "\" (" + date + ") type:" + apod.media_type + (apod.thumbnail_url ? " (miniature OK)" : "") + " — traduction: " + (apod.explanation_fr ? "OK" : "indispo"));
-      return; // succes, on sort
+      console.log("[refresh:apod] OK \"" + apod.title + "\" (" + date + (i >= 7 ? " — repli historique" : "") + ") type:" + apod.media_type + " — traduction: " + (apod.explanation_fr ? "OK" : "indispo"));
+      return; // succes
     } catch (err) {
       console.warn("[refresh:apod] echec pour " + date + " :", err.message);
     }
   }
 
-  // Aucune des 3 dates n'a donne une APOD valide
-  apodCache.lastError = "NASA APOD renvoie des donnees invalides (migration en cours) — reessai dans 6h";
-  console.error("[refresh:apod] echec sur 3 dates consecutives");
+  // Toutes les dates ont echoue
+  apodCache.lastError = "NASA APOD indisponible sur 7 jours + replis historiques";
+  console.error("[refresh:apod] echec sur toutes les dates candidates");
 }
 
 async function refreshNeo() {
