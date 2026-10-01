@@ -206,9 +206,9 @@ async function refreshFirms() {
 }
 
 async function translateToFrench(text) {
-  const safeText = text.slice(0, 1500); // securite longueur URL (MyMemory limite ~2500 chars avec email)
+  const safeText = text.slice(0, 1500); // securite longueur URL
 
-  // Tentative 1 : MyMemory (quota 10 000 mots/j avec email enregistre)
+  // Tentative 1 : MyMemory avec email (quota 50 000 chars/j)
   try {
     const url = "https://api.mymemory.translated.net/get?q=" +
       encodeURIComponent(safeText) +
@@ -225,14 +225,48 @@ async function translateToFrench(text) {
     console.warn("[traduction] MyMemory echec :", e.message);
   }
 
-  // Tentative 2 : Lingva Translate (proxy Google Translate, API publique JSON)
+  // Tentative 2 : LibreTranslate — instance Argos (open source, pas de cle)
+  try {
+    const r = await fetch("https://translate.argosopentech.com/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ q: safeText, source: "en", target: "fr", format: "text" }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const data = await r.json();
+    if (data.translatedText && data.translatedText.length > 10 && data.translatedText !== safeText) {
+      console.log("[traduction] LibreTranslate (argos) OK (" + data.translatedText.length + " chars)");
+      return data.translatedText;
+    }
+  } catch (e) {
+    console.warn("[traduction] LibreTranslate (argos) echec :", e.message);
+  }
+
+  // Tentative 3 : LibreTranslate — instance terraprint
+  try {
+    const r = await fetch("https://translate.terraprint.co/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ q: safeText, source: "en", target: "fr", format: "text" }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const data = await r.json();
+    if (data.translatedText && data.translatedText.length > 10 && data.translatedText !== safeText) {
+      console.log("[traduction] LibreTranslate (terraprint) OK (" + data.translatedText.length + " chars)");
+      return data.translatedText;
+    }
+  } catch (e) {
+    console.warn("[traduction] LibreTranslate (terraprint) echec :", e.message);
+  }
+
+  // Tentative 4 : Lingva Translate (proxy Google Translate)
   try {
     const r = await fetch(
       "https://lingva.ml/api/v1/en/fr/" + encodeURIComponent(safeText),
       { signal: AbortSignal.timeout(10000) }
     );
     const data = await r.json();
-    if (data.translation && data.translation.length > 10) {
+    if (data.translation && data.translation.length > 10 && data.translation !== safeText) {
       console.log("[traduction] Lingva OK (" + data.translation.length + " chars)");
       return data.translation;
     }
@@ -240,7 +274,7 @@ async function translateToFrench(text) {
     console.warn("[traduction] Lingva echec :", e.message);
   }
 
-  // Tentative 3 : MyMemory sans email (quota separé)
+  // Tentative 5 : MyMemory sans email (quota separe anonyme)
   try {
     const url = "https://api.mymemory.translated.net/get?q=" +
       encodeURIComponent(safeText) + "&langpair=en|fr";
@@ -261,17 +295,40 @@ async function translateToFrench(text) {
 
 async function refreshApod() {
   try {
-    // Appel direct avec thumbs=true pour obtenir thumbnail_url sur les APODs video
     const key = process.env.NASA_API_KEY || "DEMO_KEY";
+    // thumbs=true : retourne thumbnail_url pour les APODs video
     const apodUrl = `https://api.nasa.gov/planetary/apod?api_key=${key}&thumbs=true`;
-    const apodRes = await fetch(apodUrl);
+    const apodRes = await fetch(apodUrl, { signal: AbortSignal.timeout(15000) });
     if (!apodRes.ok) throw new Error("NASA APOD HTTP " + apodRes.status);
     const apod = await apodRes.json();
-    // Traduire l'explication en francais via MyMemory (gratuit, quota 10 000 mots/j avec email)
-    if (apod && apod.explanation) {
+
+    // Validation : la NASA migre vers science.nasa.gov et renvoie parfois
+    // "NASA Science" comme titre avec une URL de site web au lieu d'une image.
+    const GENERIC_TITLES = ["nasa science", "apod", "astronomy picture of the day"];
+    if (!apod || !apod.title || GENERIC_TITLES.includes((apod.title || "").toLowerCase().trim())) {
+      throw new Error("NASA APOD donnees invalides (titre: \"" + (apod?.title || "?") + "\")");
+    }
+
+    // Validation de l'URL image (doit pointer vers une image, pas une page web)
+    const IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp|tif|tiff)(\?.*)?$/i;
+    if (apod.media_type === "image") {
+      if (apod.url && !IMAGE_EXT.test(apod.url)) {
+        // L'URL principale n'est pas une image : essayer hdurl
+        if (apod.hdurl && IMAGE_EXT.test(apod.hdurl)) {
+          console.warn("[refresh:apod] URL principale invalide (" + apod.url.slice(0, 80) + "), utilisation de hdurl");
+          apod.url = apod.hdurl;
+        } else {
+          throw new Error("NASA APOD URL ne pointe pas vers une image: " + (apod.url || "").slice(0, 100));
+        }
+      }
+    }
+
+    // Traduction de l'explication
+    if (apod.explanation) {
       const fr = await translateToFrench(apod.explanation);
       if (fr) apod.explanation_fr = fr;
     }
+
     apodCache = {
       updatedAt: new Date().toISOString(),
       apod,
