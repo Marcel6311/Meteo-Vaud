@@ -206,17 +206,39 @@ async function refreshFirms() {
 }
 
 async function translateToFrench(text) {
-  const safeText = text.slice(0, 1500); // securite longueur URL
+  // On tronque a 800 chars : suffisant pour une explication astronomique,
+  // compatible avec les limites de toutes les APIs gratuites.
+  const safeText = text.slice(0, 800);
 
-  // Tentative 1 : MyMemory avec email (quota 50 000 chars/j)
+  // Tentative 1 : Google Translate (endpoint officieux, sans cle, tres fiable)
   try {
+    const url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=fr&dt=t&q=" +
+      encodeURIComponent(safeText);
+    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    const data = await r.json();
+    // Format reponse : [[ ["texte_fr","texte_en",null,null,10], ... ], null, ...]
+    const translated = Array.isArray(data[0])
+      ? data[0].map(function(x) { return x[0] || ""; }).join("")
+      : null;
+    if (translated && translated.length > 10 && translated !== safeText) {
+      console.log("[traduction] Google (gtx) OK (" + translated.length + " chars)");
+      return translated;
+    }
+    console.warn("[traduction] Google (gtx) reponse inattendue :", JSON.stringify(data).slice(0, 120));
+  } catch (e) {
+    console.warn("[traduction] Google (gtx) echec :", e.message);
+  }
+
+  // Tentative 2 : MyMemory avec email (quota 50 000 chars/j, ~500 chars/req)
+  try {
+    const shortText = safeText.slice(0, 450);
     const url = "https://api.mymemory.translated.net/get?q=" +
-      encodeURIComponent(safeText) +
+      encodeURIComponent(shortText) +
       "&langpair=en|fr&de=roseblanche20%40gmail.com";
     const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
     const data = await r.json();
     const tr = data?.responseData?.translatedText;
-    if (data.responseStatus === 200 && tr && tr !== safeText && tr.length > 10) {
+    if (data.responseStatus === 200 && tr && tr !== shortText && tr.length > 10) {
       console.log("[traduction] MyMemory OK (" + tr.length + " chars)");
       return tr;
     }
@@ -225,7 +247,7 @@ async function translateToFrench(text) {
     console.warn("[traduction] MyMemory echec :", e.message);
   }
 
-  // Tentative 2 : LibreTranslate — instance Argos (open source, pas de cle)
+  // Tentative 3 : LibreTranslate — instance Argos (open source, pas de cle)
   try {
     const r = await fetch("https://translate.argosopentech.com/translate", {
       method: "POST",
@@ -242,7 +264,7 @@ async function translateToFrench(text) {
     console.warn("[traduction] LibreTranslate (argos) echec :", e.message);
   }
 
-  // Tentative 3 : LibreTranslate — instance terraprint
+  // Tentative 4 : LibreTranslate — instance terraprint
   try {
     const r = await fetch("https://translate.terraprint.co/translate", {
       method: "POST",
@@ -259,29 +281,15 @@ async function translateToFrench(text) {
     console.warn("[traduction] LibreTranslate (terraprint) echec :", e.message);
   }
 
-  // Tentative 4 : Lingva Translate (proxy Google Translate)
+  // Tentative 5 : MyMemory anonyme (quota separe, texte court)
   try {
-    const r = await fetch(
-      "https://lingva.ml/api/v1/en/fr/" + encodeURIComponent(safeText),
-      { signal: AbortSignal.timeout(10000) }
-    );
-    const data = await r.json();
-    if (data.translation && data.translation.length > 10 && data.translation !== safeText) {
-      console.log("[traduction] Lingva OK (" + data.translation.length + " chars)");
-      return data.translation;
-    }
-  } catch (e) {
-    console.warn("[traduction] Lingva echec :", e.message);
-  }
-
-  // Tentative 5 : MyMemory sans email (quota separe anonyme)
-  try {
+    const shortText = safeText.slice(0, 450);
     const url = "https://api.mymemory.translated.net/get?q=" +
-      encodeURIComponent(safeText) + "&langpair=en|fr";
+      encodeURIComponent(shortText) + "&langpair=en|fr";
     const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
     const data = await r.json();
     const tr = data?.responseData?.translatedText;
-    if (data.responseStatus === 200 && tr && tr !== safeText && tr.length > 10) {
+    if (data.responseStatus === 200 && tr && tr !== shortText && tr.length > 10) {
       console.log("[traduction] MyMemory (anonyme) OK");
       return tr;
     }
