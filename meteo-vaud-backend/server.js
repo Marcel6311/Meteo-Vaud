@@ -293,6 +293,31 @@ async function translateToFrench(text) {
   return null;
 }
 
+// Repli ultime : une belle image depuis la bibliotheque NASA (sans cle API)
+async function fetchApodFromImageLibrary() {
+  var queries = ["nebula", "galaxy", "supernova", "aurora", "saturn rings", "jupiter"];
+  var q = queries[Math.floor(Math.random() * queries.length)];
+  var url = "https://images-api.nasa.gov/search?q=" + encodeURIComponent(q) +
+    "&media_type=image&year_start=2020&year_end=2024&page_size=20";
+  var res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!res.ok) throw new Error("NASA Images HTTP " + res.status);
+  var data = await res.json();
+  var items = (data.collection && data.collection.items) || [];
+  if (items.length === 0) throw new Error("Bibliotheque NASA : aucune image pour \"" + q + "\"");
+  var item = items[Math.floor(Math.random() * items.length)];
+  var meta = item.data && item.data[0];
+  var imgUrl = item.links && item.links[0] && item.links[0].href;
+  if (!imgUrl || !meta) throw new Error("Donnees image invalides");
+  return {
+    title: meta.title || ("Image NASA — " + q),
+    explanation: meta.description || "",
+    url: imgUrl,
+    media_type: "image",
+    date: new Date().toISOString().slice(0, 10),
+    _fallbackSource: "NASA Image Library (APOD API indisponible)"
+  };
+}
+
 async function refreshApod() {
   const key = process.env.NASA_API_KEY || "DEMO_KEY";
   const IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp|tif|tiff)(\?.*)?$/i;
@@ -301,32 +326,27 @@ async function refreshApod() {
   // Valide que la reponse est un vrai APOD avec une image utilisable
   function isValidApod(apod) {
     if (!apod || !apod.title) return false;
-    // Detecter les titres generiques renvoyés pendant la migration NASA
     if (GENERIC_TITLES.includes(apod.title.toLowerCase().trim())) return false;
     if (apod.media_type === "image") {
       if (apod.url && !IMAGE_EXT.test(apod.url)) {
-        // URL principale non-image : tentative avec hdurl
         if (apod.hdurl && IMAGE_EXT.test(apod.hdurl)) {
-          apod.url = apod.hdurl; // correction en place
+          apod.url = apod.hdurl;
         } else {
-          return false; // aucune URL image valide
+          return false;
         }
       }
     }
     return true;
   }
 
-  // 1) Essayer les 7 derniers jours (migration NASA peut casser plusieurs jours)
+  // Essayer 7 jours recents puis 5 dates historiques via api.nasa.gov
   var today = new Date();
   var recentDates = Array.from({ length: 7 }, function(_, i) {
     var d = new Date(today);
     d.setDate(d.getDate() - i);
     return d.toISOString().slice(0, 10);
   });
-
-  // 2) Repli sur des dates historiques connues pour etre stables
   var historicalDates = ["2024-09-15", "2024-07-04", "2024-03-20", "2023-12-25", "2023-06-21"];
-
   var allDates = recentDates.concat(historicalDates);
 
   for (var i = 0; i < allDates.length; i++) {
@@ -338,14 +358,29 @@ async function refreshApod() {
         console.warn("[refresh:apod] HTTP " + apodRes.status + " pour " + date);
         continue;
       }
-      var apod = await apodRes.json();
+      // Lire en texte d'abord : si NASA renvoie du HTML (cle epuisee), le JSON.parse echouerait silencieusement
+      var rawText = await apodRes.text();
+      var apod;
+      try {
+        apod = JSON.parse(rawText);
+      } catch (jsonErr) {
+        var preview = rawText.slice(0, 120).replace(/\n/g, " ");
+        console.error("[refresh:apod] reponse non-JSON pour " + date + " : " + preview);
+        // HTML = DEMO_KEY epuisee ou API indisponible, inutile d'essayer d'autres dates
+        if (rawText.trim().startsWith("<")) {
+          apodCache.lastError = "NASA APOD : réponse HTML (DEMO_KEY épuisée ou API en panne) — vérifiez NASA_API_KEY dans Render";
+          break; // sortir de la boucle, aller au repli Image Library
+        }
+        continue;
+      }
 
-      // Detecter une erreur de quota/cle NASA (la reponse n'est pas un APOD)
+      // Erreur JSON structuree de NASA (quota, cle invalide…)
       if (apod && apod.error) {
-        var code = (apod.error.code || "");
-        console.error("[refresh:apod] Erreur API NASA : " + code + " — " + (apod.error.message || "").slice(0, 100));
-        apodCache.lastError = "Clé API NASA : " + (apod.error.message || code).slice(0, 120);
-        return; // inutile d'essayer d'autres dates
+        var errCode = (apod.error.code || "");
+        var errMsg = (apod.error.message || errCode).slice(0, 150);
+        console.error("[refresh:apod] Erreur API NASA : " + errCode + " — " + errMsg);
+        apodCache.lastError = "Clé API NASA : " + errMsg;
+        break; // sortir de la boucle
       }
 
       if (!isValidApod(apod)) {
@@ -353,23 +388,34 @@ async function refreshApod() {
         continue;
       }
 
-      // APOD valide — traduction et mise en cache
+      // Succes APOD
       if (apod.explanation) {
         var fr = await translateToFrench(apod.explanation);
         if (fr) apod.explanation_fr = fr;
       }
-      if (i >= 7) apod._fallbackDate = date; // marquer les replis historiques
+      if (i >= 7) apod._fallbackDate = date;
       apodCache = { updatedAt: new Date().toISOString(), apod: apod, lastError: null };
       console.log("[refresh:apod] OK \"" + apod.title + "\" (" + date + (i >= 7 ? " — repli historique" : "") + ") type:" + apod.media_type + " — traduction: " + (apod.explanation_fr ? "OK" : "indispo"));
-      return; // succes
+      return;
     } catch (err) {
       console.warn("[refresh:apod] echec pour " + date + " :", err.message);
     }
   }
 
-  // Toutes les dates ont echoue
-  apodCache.lastError = "NASA APOD indisponible sur 7 jours + replis historiques";
-  console.error("[refresh:apod] echec sur toutes les dates candidates");
+  // Repli ultime : bibliotheque NASA images (pas de cle requise)
+  console.warn("[refresh:apod] APOD API hors service — repli sur NASA Image Library");
+  try {
+    var fallbackApod = await fetchApodFromImageLibrary();
+    if (fallbackApod.explanation) {
+      var frFallback = await translateToFrench(fallbackApod.explanation);
+      if (frFallback) fallbackApod.explanation_fr = frFallback;
+    }
+    apodCache = { updatedAt: new Date().toISOString(), apod: fallbackApod, lastError: null };
+    console.log("[refresh:apod] Repli Image Library OK : \"" + fallbackApod.title + "\"");
+  } catch (libErr) {
+    apodCache.lastError = "NASA APOD et Image Library indisponibles — " + libErr.message.slice(0, 100);
+    console.error("[refresh:apod] echec total :", libErr.message);
+  }
 }
 
 async function refreshNeo() {
