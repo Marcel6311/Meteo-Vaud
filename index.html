@@ -4533,6 +4533,28 @@
       });
   }
 
+  // Traduction côté navigateur (en dernier recours quand le serveur n'a pas de explanation_fr).
+  // Le navigateur utilise sa propre IP, pas celle de Render → MyMemory ne rate-limite pas.
+  function translateApodClient(englishText, targetElement) {
+    if (!englishText) return;
+    var shortText = englishText.slice(0, 450); // limite MyMemory : 500 chars, on prend 450 par sécurité
+    var url = "https://api.mymemory.translated.net/get?q=" +
+      encodeURIComponent(shortText) +
+      "&langpair=en|fr&de=roseblanche20%40gmail.com";
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var tr = data && data.responseData && data.responseData.translatedText;
+        if (data.responseStatus === 200 && tr && tr.length > 5 && tr !== shortText) {
+          targetElement.textContent = tr;
+        }
+        // En cas d'échec silencieux : le texte anglais déjà affiché reste intact
+      })
+      .catch(function() {
+        // Echec réseau : on garde l'anglais déjà affiché, aucun message d'erreur
+      });
+  }
+
   function fetchApodPanel() {
     document.getElementById("apodTitle").textContent = "Chargement…";
     var btn = document.getElementById("apodRefreshBtn");
@@ -4587,7 +4609,15 @@
         } else {
           mediaDiv.innerHTML = '<img src="' + apod.url + '" alt="' + apod.title + '" style="max-width:100%;border-radius:8px;cursor:pointer;" onclick="window.open(\'' + (apod.hdurl || apod.url) + '\',\'_blank\')">';
         }
-        document.getElementById("apodExplanation").textContent = apod.explanation_fr || apod.explanation;
+        var expl = document.getElementById("apodExplanation");
+        if (apod.explanation_fr) {
+          // Traduction fournie par le serveur → affichage direct
+          expl.textContent = apod.explanation_fr;
+        } else if (apod.explanation) {
+          // Pas de traduction serveur → afficher l'anglais d'abord, puis tenter du côté navigateur
+          expl.textContent = apod.explanation;
+          translateApodClient(apod.explanation, expl);
+        }
         document.getElementById("apodCopyright").textContent = apod.copyright ? "© " + apod.copyright + " · " + apod.date : apod.date;
       })
       .catch(function () {
