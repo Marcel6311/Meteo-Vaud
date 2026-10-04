@@ -205,31 +205,17 @@ async function refreshFirms() {
   }
 }
 
-async function translateToFrench(text) {
-  // On tronque a 800 chars : suffisant pour une explication astronomique,
-  // compatible avec les limites de toutes les APIs gratuites.
+// Traduit un texte anglais vers le francais.
+// Tentative 1 : MyMemory avec email (450 chars max par requete, traduction principale cote serveur)
+// Tentative 2 : LibreTranslate Argos
+// Tentative 3 : LibreTranslate Terraprint
+// Tentative 4 : MyMemory anonyme
+// NOTE : si toutes echouent (IP Render rate-limitee), le navigateur traduit lui-meme
+//        via MyMemory depuis l'IP unique de l'utilisateur (voir index.html translateApodClient).
+async function translateToFrench(text, _hint) {
   const safeText = text.slice(0, 800);
 
-  // Tentative 1 : Google Translate (endpoint officieux, sans cle, tres fiable)
-  try {
-    const url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=fr&dt=t&q=" +
-      encodeURIComponent(safeText);
-    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    const data = await r.json();
-    // Format reponse : [[ ["texte_fr","texte_en",null,null,10], ... ], null, ...]
-    const translated = Array.isArray(data[0])
-      ? data[0].map(function(x) { return x[0] || ""; }).join("")
-      : null;
-    if (translated && translated.length > 10 && translated !== safeText) {
-      console.log("[traduction] Google (gtx) OK (" + translated.length + " chars)");
-      return translated;
-    }
-    console.warn("[traduction] Google (gtx) reponse inattendue :", JSON.stringify(data).slice(0, 120));
-  } catch (e) {
-    console.warn("[traduction] Google (gtx) echec :", e.message);
-  }
-
-  // Tentative 2 : MyMemory avec email (quota 50 000 chars/j, ~500 chars/req)
+  // ── Tentative 1 : MyMemory avec email ────────────────────────────────────
   try {
     const shortText = safeText.slice(0, 450);
     const url = "https://api.mymemory.translated.net/get?q=" +
@@ -247,7 +233,7 @@ async function translateToFrench(text) {
     console.warn("[traduction] MyMemory echec :", e.message);
   }
 
-  // Tentative 3 : LibreTranslate — instance Argos (open source, pas de cle)
+  // ── Tentative 2 : LibreTranslate Argos ───────────────────────────────────
   try {
     const r = await fetch("https://translate.argosopentech.com/translate", {
       method: "POST",
@@ -264,7 +250,7 @@ async function translateToFrench(text) {
     console.warn("[traduction] LibreTranslate (argos) echec :", e.message);
   }
 
-  // Tentative 4 : LibreTranslate — instance terraprint
+  // ── Tentative 3 : LibreTranslate Terraprint ──────────────────────────────
   try {
     const r = await fetch("https://translate.terraprint.co/translate", {
       method: "POST",
@@ -281,7 +267,7 @@ async function translateToFrench(text) {
     console.warn("[traduction] LibreTranslate (terraprint) echec :", e.message);
   }
 
-  // Tentative 5 : MyMemory anonyme (quota separe, texte court)
+  // ── Tentative 4 : MyMemory anonyme ───────────────────────────────────────
   try {
     const shortText = safeText.slice(0, 450);
     const url = "https://api.mymemory.translated.net/get?q=" +
@@ -301,29 +287,74 @@ async function translateToFrench(text) {
   return null;
 }
 
-// Repli ultime : une belle image depuis la bibliotheque NASA (sans cle API)
+// Repli ultime : une belle image spatiale depuis la bibliotheque NASA (sans cle API)
+// Les requetes sont volontairement tres specifiques (objets astronomiques precis)
+// pour eviter que l'API renvoie des photos de conferences de presse ou d'evenements.
 async function fetchApodFromImageLibrary() {
-  var queries = ["nebula", "galaxy", "supernova", "aurora", "saturn rings", "jupiter"];
-  var q = queries[Math.floor(Math.random() * queries.length)];
-  var url = "https://images-api.nasa.gov/search?q=" + encodeURIComponent(q) +
-    "&media_type=image&year_start=2020&year_end=2024&page_size=20";
-  var res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-  if (!res.ok) throw new Error("NASA Images HTTP " + res.status);
-  var data = await res.json();
-  var items = (data.collection && data.collection.items) || [];
-  if (items.length === 0) throw new Error("Bibliotheque NASA : aucune image pour \"" + q + "\"");
-  var item = items[Math.floor(Math.random() * items.length)];
-  var meta = item.data && item.data[0];
-  var imgUrl = item.links && item.links[0] && item.links[0].href;
-  if (!imgUrl || !meta) throw new Error("Donnees image invalides");
-  return {
-    title: meta.title || ("Image NASA — " + q),
-    explanation: meta.description || "",
-    url: imgUrl,
-    media_type: "image",
-    date: new Date().toISOString().slice(0, 10),
-    _fallbackSource: "NASA Image Library (APOD API indisponible)"
-  };
+  // Requetes pointant sur de vrais objets astronomiques photographiables —
+  // jamais un mot qui pourrait designer un evenement humain.
+  var SPACE_QUERIES = [
+    "Pillars of Creation Eagle Nebula",
+    "Crab Nebula supernova remnant",
+    "Andromeda galaxy M31",
+    "Saturn rings Cassini",
+    "Jupiter Great Red Spot",
+    "Hubble Ultra Deep Field",
+    "Orion Nebula M42",
+    "Whirlpool Galaxy M51",
+    "Sombrero Galaxy M104",
+    "Helix Nebula planetary"
+  ];
+  // Mots qui trahissent une photo de presse ou d'evenement — on rejette ces images
+  var REJECT_TITLE = /\b(conference|press|auditorium|ceremony|award|signing|briefing|panel|senator|congress|administrator|director|visit|tour|team|staff|personnel|portrait|inaugur|official|release event|media day)\b/i;
+
+  var shuffled = SPACE_QUERIES.slice().sort(function() { return Math.random() - 0.5; });
+
+  for (var qi = 0; qi < shuffled.length; qi++) {
+    var q = shuffled[qi];
+    try {
+      var url = "https://images-api.nasa.gov/search?q=" + encodeURIComponent(q) +
+        "&media_type=image&year_start=2000&page_size=30";
+      var res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      if (!res.ok) continue;
+      var data = await res.json();
+      var items = (data.collection && data.collection.items) || [];
+
+      // Filtrer uniquement les vraies images spatiales
+      var spaceItems = items.filter(function(item) {
+        var meta = item.data && item.data[0];
+        var imgUrl = item.links && item.links[0] && item.links[0].href;
+        if (!meta || !imgUrl) return false;
+        var title = (meta.title || "").toLowerCase();
+        if (REJECT_TITLE.test(title)) return false;
+        // L'URL de vignette NASA doit pointer vers un fichier image
+        if (!/\.(jpg|jpeg|png|gif|webp|tiff?)/i.test(imgUrl)) return false;
+        return true;
+      });
+
+      if (spaceItems.length === 0) {
+        console.warn("[apod-fallback] Aucune image spatiale pour \"" + q + "\" — requete suivante");
+        continue;
+      }
+
+      var item = spaceItems[Math.floor(Math.random() * spaceItems.length)];
+      var meta = item.data[0];
+      var imgUrl = item.links[0].href;
+
+      console.log("[apod-fallback] Image retenue : \"" + meta.title + "\" (requete: " + q + ")");
+      return {
+        title: meta.title || ("Image NASA — " + q),
+        explanation: meta.description || "",
+        url: imgUrl,
+        media_type: "image",
+        date: new Date().toISOString().slice(0, 10),
+        _fallbackSource: "NASA Image Library (APOD API indisponible)"
+      };
+    } catch (e) {
+      console.warn("[apod-fallback] Echec requete \"" + q + "\" :", e.message);
+    }
+  }
+  throw new Error("Bibliotheque NASA : aucune image spatiale trouvee apres " + shuffled.length + " requetes");
 }
 
 async function refreshApod() {
@@ -396,9 +427,9 @@ async function refreshApod() {
         continue;
       }
 
-      // Succes APOD
+      // Succes APOD — on passe le titre comme hint Wikipedia pour la traduction
       if (apod.explanation) {
-        var fr = await translateToFrench(apod.explanation);
+        var fr = await translateToFrench(apod.explanation, apod.title);
         if (fr) apod.explanation_fr = fr;
       }
       if (i >= 7) apod._fallbackDate = date;
@@ -415,7 +446,8 @@ async function refreshApod() {
   try {
     var fallbackApod = await fetchApodFromImageLibrary();
     if (fallbackApod.explanation) {
-      var frFallback = await translateToFrench(fallbackApod.explanation);
+      // On utilise le titre de l'image comme hint Wikipedia (tres pertinent pour les objets astronomiques)
+      var frFallback = await translateToFrench(fallbackApod.explanation, fallbackApod.title);
       if (frFallback) fallbackApod.explanation_fr = frFallback;
     }
     apodCache = { updatedAt: new Date().toISOString(), apod: fallbackApod, lastError: null };
