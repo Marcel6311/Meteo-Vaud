@@ -4535,24 +4535,59 @@
 
   // Traduction côté navigateur (en dernier recours quand le serveur n'a pas de explanation_fr).
   // Le navigateur utilise sa propre IP, pas celle de Render → MyMemory ne rate-limite pas.
+  // Le texte est découpé en morceaux de 450 chars max (limite MyMemory par requête),
+  // chaque morceau est traduit séquentiellement puis les résultats sont recollés.
   function translateApodClient(englishText, targetElement) {
     if (!englishText) return;
-    var shortText = englishText.slice(0, 450); // limite MyMemory : 500 chars, on prend 450 par sécurité
-    var url = "https://api.mymemory.translated.net/get?q=" +
-      encodeURIComponent(shortText) +
-      "&langpair=en|fr&de=roseblanche20%40gmail.com";
-    fetch(url)
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        var tr = data && data.responseData && data.responseData.translatedText;
-        if (data.responseStatus === 200 && tr && tr.length > 5 && tr !== shortText) {
-          targetElement.textContent = tr;
+
+    // Découper en morceaux de 450 chars max en coupant à la fin d'un mot
+    var chunks = [];
+    var remaining = englishText;
+    while (remaining.length > 0 && chunks.length < 4) {
+      if (remaining.length <= 450) { chunks.push(remaining); break; }
+      var cut = remaining.lastIndexOf(' ', 450);
+      if (cut < 100) cut = 450; // pas d'espace proche → couper dur
+      chunks.push(remaining.slice(0, cut));
+      remaining = remaining.slice(cut).trim();
+    }
+
+    var translatedChunks = [];
+    var idx = 0;
+
+    function nextChunk() {
+      if (idx >= chunks.length) {
+        // Tous les morceaux traduits → remplacer le texte affiché
+        if (translatedChunks.length > 0) {
+          targetElement.textContent = translatedChunks.join(' ');
         }
-        // En cas d'échec silencieux : le texte anglais déjà affiché reste intact
-      })
-      .catch(function() {
-        // Echec réseau : on garde l'anglais déjà affiché, aucun message d'erreur
-      });
+        return;
+      }
+      var chunk = chunks[idx];
+      var url = "https://api.mymemory.translated.net/get?q=" +
+        encodeURIComponent(chunk) +
+        "&langpair=en|fr&de=roseblanche20%40gmail.com";
+      fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var tr = data && data.responseData && data.responseData.translatedText;
+          if (data.responseStatus === 200 && tr && tr.length > 5 && tr !== chunk) {
+            translatedChunks.push(tr);
+            idx++;
+            nextChunk();
+          } else {
+            // Quota dépassé ou erreur : compléter avec les morceaux anglais restants
+            for (var i = idx; i < chunks.length; i++) translatedChunks.push(chunks[i]);
+            targetElement.textContent = translatedChunks.join(' ');
+          }
+        })
+        .catch(function() {
+          // Erreur réseau : compléter avec l'anglais pour les morceaux restants
+          for (var i = idx; i < chunks.length; i++) translatedChunks.push(chunks[i]);
+          if (translatedChunks.length > 0) targetElement.textContent = translatedChunks.join(' ');
+        });
+    }
+
+    nextChunk();
   }
 
   function fetchApodPanel() {
