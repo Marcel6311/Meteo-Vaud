@@ -215,20 +215,42 @@ async function refreshFirms() {
 async function translateToFrench(text, _hint) {
   const safeText = text.slice(0, 800);
 
-  // ── Tentative 1 : MyMemory avec email ────────────────────────────────────
+  // ── Tentative 1 : MyMemory avec email (morceaux de 450 chars, max 4 requetes) ──
   try {
-    const shortText = safeText.slice(0, 450);
-    const url = "https://api.mymemory.translated.net/get?q=" +
-      encodeURIComponent(shortText) +
-      "&langpair=en|fr&de=roseblanche20%40gmail.com";
-    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    const data = await r.json();
-    const tr = data?.responseData?.translatedText;
-    if (data.responseStatus === 200 && tr && tr !== shortText && tr.length > 10) {
-      console.log("[traduction] MyMemory OK (" + tr.length + " chars)");
-      return tr;
+    // Decouper le texte en morceaux de 450 chars max (limite MyMemory par requete)
+    // en coupant de preference a la fin d'un mot pour eviter les coupures en plein mot.
+    const chunks = [];
+    let remaining = safeText;
+    while (remaining.length > 0 && chunks.length < 4) {
+      if (remaining.length <= 450) { chunks.push(remaining); break; }
+      let cut = remaining.lastIndexOf(" ", 450);
+      if (cut < 100) cut = 450; // pas d'espace proche → couper dur
+      chunks.push(remaining.slice(0, cut));
+      remaining = remaining.slice(cut).trim();
     }
-    console.warn("[traduction] MyMemory ko status=" + data.responseStatus + " quota=" + JSON.stringify(data.quotaFinished));
+    const translatedChunks = [];
+    let myMemoryOk = true;
+    for (const chunk of chunks) {
+      const url = "https://api.mymemory.translated.net/get?q=" +
+        encodeURIComponent(chunk) +
+        "&langpair=en|fr&de=roseblanche20%40gmail.com";
+      const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      const data = await r.json();
+      const tr = data?.responseData?.translatedText;
+      if (data.responseStatus === 200 && tr && tr !== chunk && tr.length > 5) {
+        translatedChunks.push(tr);
+      } else {
+        console.warn("[traduction] MyMemory ko morceau " + (translatedChunks.length + 1) +
+          " status=" + data.responseStatus + " quota=" + JSON.stringify(data.quotaFinished));
+        myMemoryOk = false;
+        break;
+      }
+    }
+    if (myMemoryOk && translatedChunks.length > 0) {
+      const full = translatedChunks.join(" ");
+      console.log("[traduction] MyMemory OK (" + chunks.length + " morceaux, " + full.length + " chars)");
+      return full;
+    }
   } catch (e) {
     console.warn("[traduction] MyMemory echec :", e.message);
   }
