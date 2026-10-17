@@ -1528,10 +1528,10 @@
   })
     .setView(SCOPE_VIEWS.vd.center, SCOPE_VIEWS.vd.zoom);
 
-  // OpenStreetMap avec filtre CSS sombre — toutes les rues, sans clé API
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    maxZoom: 19,
+  // OpenStreetMap France — labels en français (name:fr prioritaire), filtre CSS sombre
+  L.tileLayer("https://tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &bull; Tiles &copy; <a href="https://openstreetmap.fr">OSM France</a>',
+    maxZoom: 20,
     noWrap: true,
     className: "osm-dark"
   }).addTo(map);
