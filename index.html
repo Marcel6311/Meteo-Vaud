@@ -1528,12 +1528,12 @@
   })
     .setView(SCOPE_VIEWS.vd.center, SCOPE_VIEWS.vd.zoom);
 
-  // OpenStreetMap France — labels en français (name:fr prioritaire), filtre CSS sombre
-  L.tileLayer("https://tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png", {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &bull; Tiles &copy; <a href="https://openstreetmap.fr">OSM France</a>',
+  // CARTO Dark Matter — carte sombre native, labels en latin (pas de cyrillique/grec/arabe)
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: "abcd",
     maxZoom: 20,
-    noWrap: true,
-    className: "osm-dark"
+    noWrap: true
   }).addTo(map);
 
   var markers = {}; // station_id -> L.circleMarker
