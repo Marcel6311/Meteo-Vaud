@@ -5141,61 +5141,105 @@
   // -------------------------------------------------------------------
   var mapClickMarker = null;
 
-  function fetchWikipediaInfo(lat, lon, callback) {
-    // 1. Géosearch Wikipedia (fr) — article le plus proche dans un rayon de 1 km
-    var geoUrl = "https://fr.wikipedia.org/w/api.php?action=query&list=geosearch" +
-      "&gscoord=" + lat + "|" + lon + "&gsradius=1000&gslimit=1&format=json&origin=*";
+  // Cherche la population Wikidata (P1082) pour un wikibaseId donné
+  function fetchWikidataPopulation(wikibaseId, result, callback) {
+    var wdUrl = "https://www.wikidata.org/w/api.php?action=wbgetentities" +
+      "&ids=" + wikibaseId + "&props=claims&format=json&origin=*";
+    fetch(wdUrl).then(function (r) { return r.json(); })
+      .then(function (wdData) {
+        var entity = wdData.entities && wdData.entities[wikibaseId];
+        var popClaims = entity && entity.claims && entity.claims.P1082;
+        if (popClaims && popClaims.length > 0) {
+          var popVal = popClaims[0].mainsnak &&
+            popClaims[0].mainsnak.datavalue &&
+            popClaims[0].mainsnak.datavalue.value &&
+            popClaims[0].mainsnak.datavalue.value.amount;
+          if (popVal) result.population = parseInt(popVal.replace("+", ""));
+        }
+        callback(result);
+      })
+      .catch(function () { callback(result); });
+  }
 
+  // Cherche un article Wikipedia par son titre exact (nom de ville)
+  function fetchWikipediaByTitle(cityName, callback) {
+    var url = "https://fr.wikipedia.org/w/api.php?action=query&titles=" + encodeURIComponent(cityName) +
+      "&prop=extracts|pageimages|pageprops&exintro=1&exchars=400&pithumbsize=140&piprop=thumbnail" +
+      "&format=json&origin=*";
+    fetch(url).then(function (r) { return r.json(); })
+      .then(function (data) {
+        var pages = data.query && data.query.pages;
+        if (!pages) { callback(null); return; }
+        var pageId = Object.keys(pages)[0];
+        if (pageId === "-1") { callback(null); return; }
+        var page = pages[pageId];
+        var wikibaseId = page.pageprops && page.pageprops.wikibase_item;
+        var extract = page.extract ? page.extract.replace(/<[^>]+>/g, "").trim() : "";
+        var thumb = page.thumbnail && page.thumbnail.source;
+        var title = page.title;
+        var wikiUrl = "https://fr.wikipedia.org/wiki/" + encodeURIComponent(title.replace(/ /g, "_"));
+        var result = { title: title, extract: extract, thumb: thumb, url: wikiUrl, population: null };
+        if (!wikibaseId) { callback(result); return; }
+        fetchWikidataPopulation(wikibaseId, result, callback);
+      })
+      .catch(function () { callback(null); });
+  }
+
+  // Récupère les détails d'une page Wikipedia par pageId, avec fallback population par nom de ville
+  function fetchWikipediaPage(pageId, cityName, callback) {
+    var pageUrl = "https://fr.wikipedia.org/w/api.php?action=query&pageids=" + pageId +
+      "&prop=extracts|pageimages|pageprops&exintro=1&exchars=400&pithumbsize=140&piprop=thumbnail" +
+      "&format=json&origin=*";
+    fetch(pageUrl).then(function (r) { return r.json(); })
+      .then(function (pageData) {
+        var pages = pageData.query && pageData.query.pages;
+        var page = pages && pages[pageId];
+        if (!page) {
+          if (cityName) fetchWikipediaByTitle(cityName, callback); else callback(null); return;
+        }
+        var wikibaseId = page.pageprops && page.pageprops.wikibase_item;
+        var extract = page.extract ? page.extract.replace(/<[^>]+>/g, "").trim() : "";
+        var thumb = page.thumbnail && page.thumbnail.source;
+        var title = page.title;
+        var wikiUrl = "https://fr.wikipedia.org/wiki/" + encodeURIComponent(title.replace(/ /g, "_"));
+        var result = { title: title, extract: extract, thumb: thumb, url: wikiUrl, population: null };
+
+        function afterPopulation(res) {
+          // Si l'article géosearch n'est pas la ville elle-même, chercher la population par nom de ville
+          if (!res.population && cityName && res.title.toLowerCase() !== cityName.toLowerCase()) {
+            fetchWikipediaByTitle(cityName, function (cityRes) {
+              if (cityRes && cityRes.population) res.population = cityRes.population;
+              callback(res);
+            });
+          } else {
+            callback(res);
+          }
+        }
+
+        if (!wikibaseId) { afterPopulation(result); return; }
+        fetchWikidataPopulation(wikibaseId, result, afterPopulation);
+      })
+      .catch(function () {
+        if (cityName) fetchWikipediaByTitle(cityName, callback); else callback(null);
+      });
+  }
+
+  // Géosearch par coordonnées (rayon 5 km), avec fallback par nom de ville
+  function fetchWikipediaInfo(lat, lon, cityName, callback) {
+    var geoUrl = "https://fr.wikipedia.org/w/api.php?action=query&list=geosearch" +
+      "&gscoord=" + lat + "|" + lon + "&gsradius=5000&gslimit=1&format=json&origin=*";
     fetch(geoUrl)
       .then(function (r) { return r.json(); })
       .then(function (data) {
         var results = data.query && data.query.geosearch;
-        if (!results || results.length === 0) { callback(null); return; }
-        var pageId = results[0].pageid;
-
-        // 2. Extrait + miniature + ID Wikidata
-        var pageUrl = "https://fr.wikipedia.org/w/api.php?action=query" +
-          "&pageids=" + pageId +
-          "&prop=extracts|pageimages|pageprops" +
-          "&exintro=1&exchars=400&pithumbsize=140&piprop=thumbnail" +
-          "&format=json&origin=*";
-
-        return fetch(pageUrl).then(function (r) { return r.json(); })
-          .then(function (pageData) {
-            var pages = pageData.query && pageData.query.pages;
-            var page = pages && pages[pageId];
-            if (!page) { callback(null); return; }
-
-            var wikibaseId = page.pageprops && page.pageprops.wikibase_item;
-            var extract = page.extract ? page.extract.replace(/<[^>]+>/g, "").trim() : "";
-            var thumb = page.thumbnail && page.thumbnail.source;
-            var title = page.title;
-            var wikiUrl = "https://fr.wikipedia.org/wiki/" + encodeURIComponent(title.replace(/ /g, "_"));
-            var result = { title: title, extract: extract, thumb: thumb, url: wikiUrl, population: null };
-
-            if (!wikibaseId) { callback(result); return; }
-
-            // 3. Wikidata — population (P1082)
-            var wdUrl = "https://www.wikidata.org/w/api.php?action=wbgetentities" +
-              "&ids=" + wikibaseId + "&props=claims&format=json&origin=*";
-
-            fetch(wdUrl).then(function (r) { return r.json(); })
-              .then(function (wdData) {
-                var entity = wdData.entities && wdData.entities[wikibaseId];
-                var popClaims = entity && entity.claims && entity.claims.P1082;
-                if (popClaims && popClaims.length > 0) {
-                  var popVal = popClaims[0].mainsnak &&
-                    popClaims[0].mainsnak.datavalue &&
-                    popClaims[0].mainsnak.datavalue.value &&
-                    popClaims[0].mainsnak.datavalue.value.amount;
-                  if (popVal) result.population = parseInt(popVal.replace("+", ""));
-                }
-                callback(result);
-              })
-              .catch(function () { callback(result); });
-          });
+        if (!results || results.length === 0) {
+          if (cityName) fetchWikipediaByTitle(cityName, callback); else callback(null); return;
+        }
+        fetchWikipediaPage(results[0].pageid, cityName, callback);
       })
-      .catch(function () { callback(null); });
+      .catch(function () {
+        if (cityName) fetchWikipediaByTitle(cityName, callback); else callback(null);
+      });
   }
 
   map.on("click", function (e) {
@@ -5203,80 +5247,63 @@
     var lon = e.latlng.lng;
 
     if (mapClickMarker) { map.removeLayer(mapClickMarker); mapClickMarker = null; }
-
     mapClickMarker = L.marker([lat, lon]).addTo(map);
     mapClickMarker.bindPopup("<div style='min-width:180px'>🔍 Recherche…</div>").openPopup();
 
-    var address = null;
-    var wiki = null;
-    var pending = 2;
-
-    function buildPopup() {
-      pending--;
-      if (pending > 0) return;
-
-      var html = "";
-
-      if (wiki && wiki.thumb) {
-        html += '<img src="' + wiki.thumb + '" style="width:100%;border-radius:4px;margin-bottom:6px;display:block;">';
-      }
-
-      if (wiki && wiki.title) {
-        html += '<b><a href="' + wiki.url + '" target="_blank" style="color:var(--amber);text-decoration:none;">' + wiki.title + '</a></b>';
-      } else if (address) {
-        html += '<b>' + address + '</b>';
-      }
-
-      if (wiki && wiki.population) {
-        html += '<div class="spotlight-details">👤 ' + wiki.population.toLocaleString("fr-CH") + ' habitants</div>';
-      }
-
-      if (wiki && wiki.extract) {
-        var short = wiki.extract.slice(0, 280);
-        if (wiki.extract.length > 280) short += "…";
-        html += '<div class="spotlight-details" style="margin-top:4px;">' + short + '</div>';
-        html += '<div class="spotlight-details"><a href="' + wiki.url + '" target="_blank" style="color:var(--amber);">→ Lire sur Wikipédia</a></div>';
-      }
-
-      if (address) {
-        html += '<div class="spotlight-details" style="margin-top:4px;opacity:0.65;">📍 ' + address + '</div>';
-      }
-
-      html += '<div class="spotlight-details" style="opacity:0.4;">' + lat.toFixed(5) + ', ' + lon.toFixed(5) + '</div>';
-
-      if (mapClickMarker) mapClickMarker.setPopupContent(html);
-    }
-
-    // Reverse geocoding Nominatim
+    // 1. Nominatim d'abord pour obtenir le nom de la ville
     fetch("https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon +
       "&zoom=16&addressdetails=1&accept-language=fr")
       .then(function (r) { return r.json(); })
       .then(function (data) {
         var parts = [];
+        var cityName = "";
         if (data.address) {
           var a = data.address;
           var poi = a.amenity || a.tourism || a.historic || a.building || a.leisure || "";
           var road = a.road || a.pedestrian || "";
-          var city = a.village || a.town || a.city || a.municipality || "";
+          cityName = a.village || a.town || a.city || a.municipality || "";
           var country = a.country || "";
           if (poi) parts.push(poi);
           if (road && road !== poi) parts.push(road);
-          if (city && city !== road) parts.push(city);
+          if (cityName && cityName !== road) parts.push(cityName);
           if (country) parts.push(country);
         }
-        address = parts.length > 0 ? parts.join(", ") : (lat.toFixed(5) + ", " + lon.toFixed(5));
-        buildPopup();
+        var address = parts.length > 0 ? parts.join(", ") : "";
+
+        // 2. Wikipedia + population avec le nom de ville comme fallback
+        fetchWikipediaInfo(lat, lon, cityName, function (wiki) {
+          var html = "";
+          if (wiki && wiki.thumb) {
+            html += '<img src="' + wiki.thumb + '" style="width:100%;border-radius:4px;margin-bottom:6px;display:block;">';
+          }
+          if (wiki && wiki.title) {
+            html += '<b><a href="' + wiki.url + '" target="_blank" style="color:var(--amber);text-decoration:none;">' + wiki.title + '</a></b>';
+          } else if (address) {
+            html += '<b>' + address + '</b>';
+          }
+          if (wiki && wiki.population) {
+            html += '<div class="spotlight-details">👤 ' + wiki.population.toLocaleString("fr-CH") + ' habitants</div>';
+          }
+          if (wiki && wiki.extract) {
+            var short = wiki.extract.slice(0, 280);
+            if (wiki.extract.length > 280) short += "…";
+            html += '<div class="spotlight-details" style="margin-top:4px;">' + short + '</div>';
+            html += '<div class="spotlight-details"><a href="' + wiki.url + '" target="_blank" style="color:var(--amber);">→ Lire sur Wikipédia</a></div>';
+          }
+          if (address) {
+            html += '<div class="spotlight-details" style="margin-top:4px;opacity:0.65;">📍 ' + address + '</div>';
+          }
+          if (mapClickMarker) mapClickMarker.setPopupContent(html);
+        });
       })
       .catch(function () {
-        address = lat.toFixed(5) + ", " + lon.toFixed(5);
-        buildPopup();
+        fetchWikipediaInfo(lat, lon, "", function (wiki) {
+          var html = wiki && wiki.title ?
+            '<b>' + wiki.title + '</b><div class="spotlight-details"><a href="' + wiki.url + '" target="_blank" style="color:var(--amber);">→ Lire sur Wikipédia</a></div>' :
+            '<div style="opacity:0.6;">Lieu inconnu</div>';
+          if (mapClickMarker) mapClickMarker.setPopupContent(html);
+        });
       });
-
-    // Wikipedia fr + Wikidata population
-    fetchWikipediaInfo(lat, lon, function (result) {
-      wiki = result;
-      buildPopup();
-    });
   });
 
 })();
