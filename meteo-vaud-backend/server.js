@@ -325,38 +325,12 @@ async function fetchApodFromImageLibrary() {
     "Orion Nebula M42",
     "Whirlpool Galaxy M51",
     "Sombrero Galaxy M104",
-    "Helix Nebula planetary",
-    "James Webb telescope nebula",
-    "Hubble Space Telescope galaxy",
-    "Rosette Nebula NGC 2244",
-    "Eta Carinae nebula Hubble",
-    "Butterfly Nebula NGC 6302",
-    "Cartwheel Galaxy Webb",
-    "Stephan Quintet galaxies",
-    "Tarantula Nebula 30 Doradus",
-    "Horsehead Nebula Orion",
-    "Ring Nebula M57 Lyra",
-    "Triangulum Galaxy M33",
-    "Black Eye Galaxy M64",
-    "Centaurus A radio galaxy",
-    "Lagoon Nebula M8 Sagittarius",
-    "Bubble Nebula NGC 7635"
+    "Helix Nebula planetary"
   ];
   // Mots qui trahissent une photo de presse ou d'evenement — on rejette ces images
   var REJECT_TITLE = /\b(conference|press|auditorium|ceremony|award|signing|briefing|panel|senator|congress|administrator|director|visit|tour|team|staff|personnel|portrait|inaugur|official|release event|media day)\b/i;
 
-  // Seed basé sur la date du jour : chaque jour une requête différente est choisie,
-  // cohérente toute la journée, nouvelle le lendemain.
-  var today = new Date();
-  var dateSeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
-  var startIdx = dateSeed % SPACE_QUERIES.length;
-
-  // On commence par la requête du jour, puis on essaie les suivantes si elle échoue
-  var ordered = [];
-  for (var k = 0; k < SPACE_QUERIES.length; k++) {
-    ordered.push(SPACE_QUERIES[(startIdx + k) % SPACE_QUERIES.length]);
-  }
-  var shuffled = ordered;
+  var shuffled = SPACE_QUERIES.slice().sort(function() { return Math.random() - 0.5; });
 
   for (var qi = 0; qi < shuffled.length; qi++) {
     var q = shuffled[qi];
