@@ -576,7 +576,8 @@
   /* Leaflet dark tweaks */
   .leaflet-container { background: #1a1f2a; }
   .leaflet-overlay-pane { pointer-events: none; }
-  /* CartoDB Dark Matter — fond sombre natif, pas de filtre CSS */
+  /* OSM avec filtre assombrissant — couleurs préservées (parcs verts, eau bleue) */
+  .osm-color-dark { filter: brightness(0.65) contrast(1.15) saturate(1.2); }
   .leaflet-popup-content-wrapper, .leaflet-popup-tip {
     background: var(--panel-alt);
     color: var(--text);
@@ -1531,12 +1532,12 @@
   // Empêche de scroller au-delà des limites du monde → élimine les bordures blanches
   map.setMaxBounds([[-85, -185], [85, 185]]);
 
-  // CartoDB Dark Matter — fond sombre natif avec couleurs, zoom jusqu'au niveau 20, labels en français
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: "abcd",
-    maxZoom: 20,
-    noWrap: true
+  // OSM avec filtre assombrissant — couleurs préservées, zoom 19, labels en français
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+    noWrap: true,
+    className: "osm-color-dark"
   }).addTo(map);
 
   var markers = {}; // station_id -> L.circleMarker
