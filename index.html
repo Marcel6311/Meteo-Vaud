@@ -5150,11 +5150,18 @@
         var entity = wdData.entities && wdData.entities[wikibaseId];
         var popClaims = entity && entity.claims && entity.claims.P1082;
         if (popClaims && popClaims.length > 0) {
-          var popVal = popClaims[0].mainsnak &&
-            popClaims[0].mainsnak.datavalue &&
-            popClaims[0].mainsnak.datavalue.value &&
-            popClaims[0].mainsnak.datavalue.value.amount;
-          if (popVal) result.population = parseInt(popVal.replace("+", ""));
+          var maxPop = 0;
+          for (var pi = 0; pi < popClaims.length; pi++) {
+            var popVal = popClaims[pi].mainsnak &&
+              popClaims[pi].mainsnak.datavalue &&
+              popClaims[pi].mainsnak.datavalue.value &&
+              popClaims[pi].mainsnak.datavalue.value.amount;
+            if (popVal) {
+              var n = parseInt(popVal.replace("+", ""));
+              if (n > maxPop) maxPop = n;
+            }
+          }
+          if (maxPop > 0) result.population = maxPop;
         }
         callback(result);
       })
