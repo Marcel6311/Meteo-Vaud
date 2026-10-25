@@ -5136,6 +5136,149 @@
   fetchAndRenderGlobalTemp();
   setInterval(fetchAndRenderGlobalTemp, 24 * 60 * 60 * 1000); // 24h : le NASA ne publie qu'1x/mois environ
 
+  // -------------------------------------------------------------------
+  // Clic sur la carte — fiche Wikipedia + population
+  // -------------------------------------------------------------------
+  var mapClickMarker = null;
+
+  function fetchWikipediaInfo(lat, lon, callback) {
+    // 1. Géosearch Wikipedia (fr) — article le plus proche dans un rayon de 1 km
+    var geoUrl = "https://fr.wikipedia.org/w/api.php?action=query&list=geosearch" +
+      "&gscoord=" + lat + "|" + lon + "&gsradius=1000&gslimit=1&format=json&origin=*";
+
+    fetch(geoUrl)
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var results = data.query && data.query.geosearch;
+        if (!results || results.length === 0) { callback(null); return; }
+        var pageId = results[0].pageid;
+
+        // 2. Extrait + miniature + ID Wikidata
+        var pageUrl = "https://fr.wikipedia.org/w/api.php?action=query" +
+          "&pageids=" + pageId +
+          "&prop=extracts|pageimages|pageprops" +
+          "&exintro=1&exchars=400&pithumbsize=140&piprop=thumbnail" +
+          "&format=json&origin=*";
+
+        return fetch(pageUrl).then(function (r) { return r.json(); })
+          .then(function (pageData) {
+            var pages = pageData.query && pageData.query.pages;
+            var page = pages && pages[pageId];
+            if (!page) { callback(null); return; }
+
+            var wikibaseId = page.pageprops && page.pageprops.wikibase_item;
+            var extract = page.extract ? page.extract.replace(/<[^>]+>/g, "").trim() : "";
+            var thumb = page.thumbnail && page.thumbnail.source;
+            var title = page.title;
+            var wikiUrl = "https://fr.wikipedia.org/wiki/" + encodeURIComponent(title.replace(/ /g, "_"));
+            var result = { title: title, extract: extract, thumb: thumb, url: wikiUrl, population: null };
+
+            if (!wikibaseId) { callback(result); return; }
+
+            // 3. Wikidata — population (P1082)
+            var wdUrl = "https://www.wikidata.org/w/api.php?action=wbgetentities" +
+              "&ids=" + wikibaseId + "&props=claims&format=json&origin=*";
+
+            fetch(wdUrl).then(function (r) { return r.json(); })
+              .then(function (wdData) {
+                var entity = wdData.entities && wdData.entities[wikibaseId];
+                var popClaims = entity && entity.claims && entity.claims.P1082;
+                if (popClaims && popClaims.length > 0) {
+                  var popVal = popClaims[0].mainsnak &&
+                    popClaims[0].mainsnak.datavalue &&
+                    popClaims[0].mainsnak.datavalue.value &&
+                    popClaims[0].mainsnak.datavalue.value.amount;
+                  if (popVal) result.population = parseInt(popVal.replace("+", ""));
+                }
+                callback(result);
+              })
+              .catch(function () { callback(result); });
+          });
+      })
+      .catch(function () { callback(null); });
+  }
+
+  map.on("click", function (e) {
+    var lat = e.latlng.lat;
+    var lon = e.latlng.lng;
+
+    if (mapClickMarker) { map.removeLayer(mapClickMarker); mapClickMarker = null; }
+
+    mapClickMarker = L.marker([lat, lon]).addTo(map);
+    mapClickMarker.bindPopup("<div style='min-width:180px'>🔍 Recherche…</div>").openPopup();
+
+    var address = null;
+    var wiki = null;
+    var pending = 2;
+
+    function buildPopup() {
+      pending--;
+      if (pending > 0) return;
+
+      var html = "";
+
+      if (wiki && wiki.thumb) {
+        html += '<img src="' + wiki.thumb + '" style="width:100%;border-radius:4px;margin-bottom:6px;display:block;">';
+      }
+
+      if (wiki && wiki.title) {
+        html += '<b><a href="' + wiki.url + '" target="_blank" style="color:var(--amber);text-decoration:none;">' + wiki.title + '</a></b>';
+      } else if (address) {
+        html += '<b>' + address + '</b>';
+      }
+
+      if (wiki && wiki.population) {
+        html += '<div class="spotlight-details">👤 ' + wiki.population.toLocaleString("fr-CH") + ' habitants</div>';
+      }
+
+      if (wiki && wiki.extract) {
+        var short = wiki.extract.slice(0, 280);
+        if (wiki.extract.length > 280) short += "…";
+        html += '<div class="spotlight-details" style="margin-top:4px;">' + short + '</div>';
+        html += '<div class="spotlight-details"><a href="' + wiki.url + '" target="_blank" style="color:var(--amber);">→ Lire sur Wikipédia</a></div>';
+      }
+
+      if (address) {
+        html += '<div class="spotlight-details" style="margin-top:4px;opacity:0.65;">📍 ' + address + '</div>';
+      }
+
+      html += '<div class="spotlight-details" style="opacity:0.4;">' + lat.toFixed(5) + ', ' + lon.toFixed(5) + '</div>';
+
+      if (mapClickMarker) mapClickMarker.setPopupContent(html);
+    }
+
+    // Reverse geocoding Nominatim
+    fetch("https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon +
+      "&zoom=16&addressdetails=1&accept-language=fr")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var parts = [];
+        if (data.address) {
+          var a = data.address;
+          var poi = a.amenity || a.tourism || a.historic || a.building || a.leisure || "";
+          var road = a.road || a.pedestrian || "";
+          var city = a.village || a.town || a.city || a.municipality || "";
+          var country = a.country || "";
+          if (poi) parts.push(poi);
+          if (road && road !== poi) parts.push(road);
+          if (city && city !== road) parts.push(city);
+          if (country) parts.push(country);
+        }
+        address = parts.length > 0 ? parts.join(", ") : (lat.toFixed(5) + ", " + lon.toFixed(5));
+        buildPopup();
+      })
+      .catch(function () {
+        address = lat.toFixed(5) + ", " + lon.toFixed(5);
+        buildPopup();
+      });
+
+    // Wikipedia fr + Wikidata population
+    fetchWikipediaInfo(lat, lon, function (result) {
+      wiki = result;
+      buildPopup();
+    });
+  });
+
 })();
 </script>
 
