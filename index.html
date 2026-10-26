@@ -1532,8 +1532,9 @@
   map.setMaxBounds([[-85, -185], [85, 185]]);
 
   // OpenStreetMap France — labels en français, zoom 20
-  L.tileLayer("https://tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png", {
+  L.tileLayer("https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png", {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles courtesy of <a href="https://www.openstreetmap.fr">OpenStreetMap France</a>',
+    subdomains: "abc",
     maxZoom: 20,
     noWrap: true,
     className: "osm-fr"
