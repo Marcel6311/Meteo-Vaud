@@ -2366,7 +2366,7 @@
   }
 
   function reverseGeocode(lat, lon, callback) {
-    fetch("https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon + "&zoom=10&accept-language=fr")
+    fetch("https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon + "&zoom=10&accept-language=fr,en")
       .then(function (r) { return r.json(); })
       .then(function (data) {
         var parts = [];
