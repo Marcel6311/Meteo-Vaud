@@ -1532,10 +1532,10 @@
   // Empêche de scroller au-delà des limites du monde → élimine les bordures blanches
   map.setMaxBounds([[-85, -185], [85, 185]]);
 
-  // OSM avec filtre assombrissant — couleurs préservées, zoom 19, labels en français
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    maxZoom: 19,
+  // OpenStreetMap France — labels en français, zoom 20
+  L.tileLayer("https://tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles courtesy of <a href="https://www.openstreetmap.fr">OpenStreetMap France</a>',
+    maxZoom: 20,
     noWrap: true,
     className: "osm-color-dark"
   }).addTo(map);
@@ -2366,7 +2366,7 @@
   }
 
   function reverseGeocode(lat, lon, callback) {
-    fetch("https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon + "&zoom=10&accept-language=fr,en")
+    fetch("https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon + "&zoom=10&accept-language=fr")
       .then(function (r) { return r.json(); })
       .then(function (data) {
         var parts = [];
