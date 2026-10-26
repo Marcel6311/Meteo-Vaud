@@ -5259,7 +5259,7 @@
 
     // 1. Nominatim d'abord pour obtenir le nom de la ville
     fetch("https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon +
-      "&zoom=16&addressdetails=1&accept-language=fr")
+      "&zoom=16&addressdetails=1&accept-language=fr,en")
       .then(function (r) { return r.json(); })
       .then(function (data) {
         var parts = [];
