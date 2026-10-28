@@ -2451,21 +2451,31 @@
       });
   }
 
-  // Premier chargement au demarrage (les donnees seront pretes quand
-  // l'utilisateur appuiera sur le bouton)
-  fetchFirmsAndRender();
-  setInterval(fetchFirmsAndRender, FIRE_REFRESH_MS);
+  // Chargement a la demande : /firms est lourd, on ne le telecharge que
+  // lorsque le calque incendies est active (et plus a chaque ouverture d'onglet).
+  var firmsLastFetch = 0;
+
+  setInterval(function () {
+    if (fireVisible && !document.hidden) {
+      firmsLastFetch = Date.now();
+      fetchFirmsAndRender();
+    }
+  }, FIRE_REFRESH_MS);
 
   els.fireToggle.addEventListener("click", function () {
     fireVisible = !fireVisible;
     els.fireToggle.classList.toggle("active", fireVisible);
     if (fireVisible) {
       if (firmsData) renderFireMarkers();
+      if (!firmsData || Date.now() - firmsLastFetch > FIRE_REFRESH_MS) {
+        firmsLastFetch = Date.now();
+        fetchFirmsAndRender();
+      }
     } else {
       clearFireMarkers();
     }
   });
-
+  
   // -------------------------------------------------------------------
   // EFFIS (Copernicus) - zones reellement brulees en Europe, 7 derniers jours
   // -------------------------------------------------------------------
