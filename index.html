@@ -3262,7 +3262,7 @@
               }
               fetch(API_BASE + "/wind-europe/refresh", { cache: "no-store" })
                 .then(function () {
-                  windEuropeStatusFast = true;
+                  // checkWindEuropeStatus passe seul en mode rapide des que la construction est en cours
                   setTimeout(checkWindEuropeStatus, 3000);
                 })
                 .catch(function (err) { console.error("[vent europe] echec lancement :", err); });
