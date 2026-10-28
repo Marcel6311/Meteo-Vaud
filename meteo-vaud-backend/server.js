@@ -39,10 +39,9 @@ const { fetchSpaceWeather } = require("./sources/spaceweather");
 const { fetchPollen } = require("./sources/pollen");
 const { fetchGlobalTemp } = require("./sources/globaltemp");
 
-const app = express() ;( 
-  const compression = require("compression");
-app.use(cors());
-
+   const app = express();
+   app.use(compression());
+   app.use(cors());
 // Empeche le navigateur (Safari mobile en particulier, connu pour etre
 // agressif) de mettre en cache les reponses JSON de l'API. Sans ca, un
 // bouton "rafraichir" cote frontend peut ne rien changer si le navigateur
