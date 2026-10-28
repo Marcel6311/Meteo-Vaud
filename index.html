@@ -3244,9 +3244,30 @@
       .then(function (r) { return r.json(); })
       .then(function (resp) {
         if (!resp.grid) {
-          els.windEuropeToggle.textContent = "🌀 VENT ANIMÉ EUROPE (pas encore prêt)";
-          setTimeout(function () { els.windEuropeToggle.textContent = originalLabel; }, 4000);
-          console.log("[vent europe] grille pas encore prete (backend en cours de construction)");
+          // Grille absente (ex. apres un redemarrage du backend) : on propose de la construire
+          els.windEuropeToggle.textContent = originalLabel;
+          fetch(API_BASE + "/wind-europe/status", { cache: "no-store" })
+            .then(function (r) { return r.json(); })
+            .then(function (status) {
+              if (status.inProgress) {
+                // Deja en cours (autre onglet/appareil) : la progression s'affiche, la grille se chargera toute seule
+                checkWindEuropeStatus();
+                return;
+              }
+              var ok = window.confirm("La grille du vent Europe n'est pas disponible (le serveur a redémarré).\n\nLa construire maintenant ? Cela prend environ 8 minutes.");
+              if (!ok) {
+                windEuropeVisible = false;
+                els.windEuropeToggle.classList.remove("active");
+                return;
+              }
+              fetch(API_BASE + "/wind-europe/refresh", { cache: "no-store" })
+                .then(function () {
+                  windEuropeStatusFast = true;
+                  setTimeout(checkWindEuropeStatus, 3000);
+                })
+                .catch(function (err) { console.error("[vent europe] echec lancement :", err); });
+            })
+            .catch(function (err) { console.error("[vent europe] echec statut :", err); });
           return;
         }
         els.windEuropeToggle.textContent = originalLabel;
