@@ -17,6 +17,7 @@
 
 const express = require("express");
 const cors = require("cors");
+const compression = require("compression");
 const VD_STATIONS = require("./config/stations");
 const EUROPE_CAPITALS = require("./config/capitals");
 const WORLD_CAPITALS = require("./config/capitals-world");
@@ -38,7 +39,8 @@ const { fetchSpaceWeather } = require("./sources/spaceweather");
 const { fetchPollen } = require("./sources/pollen");
 const { fetchGlobalTemp } = require("./sources/globaltemp");
 
-const app = express();
+const app = express() ;( 
+  const compression = require("compression");
 app.use(cors());
 
 // Empeche le navigateur (Safari mobile en particulier, connu pour etre
@@ -919,6 +921,7 @@ app.get("/stations/heatwave", (req, res) => {
 // GET /firms - detections d'incendies actifs avec FRP (NASA FIRMS)
 // Cache global Europe, rafraichi toutes les 2h.
 app.get("/firms", (req, res) => {
+    res.set("Cache-Control", "public, max-age=1800");
   res.json({
     source: "NASA FIRMS (VIIRS NOAA-20 + NOAA-21)",
     licence: "NASA Open Data",
